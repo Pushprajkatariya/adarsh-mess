@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Adarsh Dining Hall - Meal Reservation</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e3a8a%22/><text x=%2250%22 y=%2265%22 font-family=%22sans-serif%22 font-size=%2245%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>A</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="mobile-body">
+  <div class="mobile-app-shell">
+    
+    <!-- Clean App Header -->
+    <header class="app-header">
+      <div class="app-brand">
+        <h1 class="app-title">Adarsh Dining Hall</h1>
+        <p class="app-tagline">Hostel Meal Reservation</p>
+      </div>
+      <div class="header-clock">
+        <span class="live-dot"></span>
+        <span id="liveClock">--:--:--</span>
+      </div>
+    </header>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Main Content -->
+    <main class="app-content">
+      
+      <!-- SUCCESS CONFIRMATION OVERLAY -->
+      <div id="successCard" class="booking-success-card hidden">
+        <div class="success-check-badge">&#10003;</div>
+        <h2>Booking Confirmed</h2>
+        <p class="success-subtext">The kitchen manager has received your reservation in the database.</p>
+        
+        <div class="success-details-box" id="submittedSummaryBox">
+          <!-- Injected via app.js -->
+        </div>
+
+        <button class="btn-book-another" onclick="resetFormForNewEntry()">
+          Book Another Meal
+        </button>
+      </div>
+
+      <!-- Main Direct Booking Form -->
+      <form id="messOrderForm" class="booking-form-direct">
+        
+        <!-- Today's Date Banner -->
+        <div class="today-date-card">
+          <span class="today-label">Current Date</span>
+          <span class="today-val" id="dispTodayDate">Loading...</span>
+        </div>
+
+        <!-- Student Name Input -->
+        <div class="input-card">
+          <label class="field-label" for="studentName">Student Full Name</label>
+          <input 
+            type="text" 
+            id="studentName" 
+            class="mobile-text-input" 
+            placeholder="Enter your name..." 
+            required
+            autocomplete="name"
+          >
+        </div>
+
+        <!-- Meal Selection (3 Direct Cards: Tiffin for Next Day, Lunch/Dinner for Today) -->
+        <div class="input-card">
+          <label class="field-label">Select Meal</label>
+
+          <div class="meal-cards-stack">
+            
+            <!-- OPTION 1: Morning Tiffin (Next Day) -->
+            <div class="meal-tap-card" id="boxTiffin" onclick="toggleMealCard('tiffin')">
+              <input type="checkbox" id="checkTiffin" class="hidden-checkbox">
+              <div class="card-left">
+                <div class="card-title-row">
+                  <span class="meal-title">Morning Tiffin</span>
+                  <span class="meal-target-pill next-day">For Next Day</span>
+                </div>
+                <span class="meal-date-tag" id="tagDateTiffin">Loading...</span>
+                <span class="time-status-badge closed" id="badgeTiffinStatus">Checking...</span>
+              </div>
+              <div class="card-check-indicator" id="indicatorTiffin"></div>
+            </div>
+
+            <!-- OPTION 2: Lunch Late Thali (Today) -->
+            <div class="meal-tap-card" id="boxLunch" onclick="toggleMealCard('lunch')">
+              <input type="checkbox" id="checkLunch" class="hidden-checkbox">
+              <div class="card-left">
+                <div class="card-title-row">
+                  <span class="meal-title">Lunch Late Thali</span>
+                  <span class="meal-target-pill today">For Today</span>
+                </div>
+                <span class="meal-date-tag" id="tagDateLunch">Loading...</span>
+                <span class="time-status-badge closed" id="badgeLunchStatus">Checking...</span>
+              </div>
+              <div class="card-check-indicator" id="indicatorLunch"></div>
+            </div>
+
+            <!-- OPTION 3: Dinner Late Thali (Today) -->
+            <div class="meal-tap-card" id="boxDinner" onclick="toggleMealCard('dinner')">
+              <input type="checkbox" id="checkDinner" class="hidden-checkbox">
+              <div class="card-left">
+                <div class="card-title-row">
+                  <span class="meal-title">Dinner Late Thali</span>
+                  <span class="meal-target-pill today">For Today</span>
+                </div>
+                <span class="meal-date-tag" id="tagDateDinner">Loading...</span>
+                <span class="time-status-badge closed" id="badgeDinnerStatus">Checking...</span>
+              </div>
+              <div class="card-check-indicator" id="indicatorDinner"></div>
+            </div>
+
+          </div>
+
+          <!-- Validation Error -->
+          <div id="selectionError" class="mobile-error-banner hidden">
+            Please select at least one open meal option above.
+          </div>
+        </div>
+
+        <!-- Main CTA Button -->
+        <div class="cta-wrapper">
+          <button type="submit" class="btn-main-cta" id="submitBtn">
+            Confirm Meal Booking
+          </button>
+        </div>
+
+        <!-- Official Schedule Rules -->
+        <div class="rules-card">
+          <div class="rules-heading">Booking Schedule & Cut-offs</div>
+          <div class="rules-list">
+            <div class="rules-item">
+              <span>Morning Tiffin (For Next Day):</span>
+              <strong>09:00 AM – 11:00 PM (Previous Day)</strong>
+            </div>
+            <div class="rules-item">
+              <span>Lunch Late Thali (For Today):</span>
+              <strong>09:00 AM – 01:00 PM (Today)</strong>
+            </div>
+            <div class="rules-item">
+              <span>Dinner Late Thali (For Today):</span>
+              <strong>09:00 AM – 08:30 PM (Today)</strong>
+            </div>
+          </div>
+        </div>
+
+      </form>
+    </main>
+
+    <!-- Clean Footer -->
+    <footer class="mobile-app-footer">
+      <p>Adarsh Dining Hall • Real-time Database Booking</p>
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

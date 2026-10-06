@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Kitchen Portal - Adarsh Dining Hall</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e3a8a%22/><text x=%2250%22 y=%2265%22 font-family=%22sans-serif%22 font-size=%2245%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>M</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <meta name="robots" content="noindex, nofollow">
+</head>
+<body class="mobile-body">
+  <div class="mobile-app-shell">
+    
+    <!-- Mobile App Header -->
+    <header class="app-header">
+      <div class="app-brand">
+        <h1 class="app-title">Kitchen Portal</h1>
+        <p class="app-tagline">Adarsh Dining Hall</p>
+      </div>
+      <div class="manager-header-actions">
+        <div class="header-clock">
+          <span class="live-dot"></span>
+          <span id="liveClock">--:--:--</span>
+        </div>
+        <button class="btn-print-mobile" onclick="window.print()">Print</button>
+      </div>
+    </header>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Main Content -->
+    <main class="app-content" style="display: flex; flex-direction: column; gap: 0.9rem;">
+      
+      <!-- Date Stepper Card (Thumb-Friendly) -->
+      <div class="mobile-date-card">
+        <label for="adminDateFilter">Select Serving Date</label>
+        <div class="mobile-stepper-row">
+          <button type="button" class="btn-step-mobile" onclick="stepDate(-1)" title="Previous Day">&larr;</button>
+          <input type="date" id="adminDateFilter" class="mobile-date-picker-input" onchange="loadBookingsFromDb()">
+          <button type="button" class="btn-step-mobile" onclick="stepDate(1)" title="Next Day">&rarr;</button>
+          <button type="button" class="btn-today-pill" onclick="resetToCurrentDate()">Today</button>
+        </div>
+        <div class="mobile-serving-banner">
+          <span>Serving Date:</span>
+          <strong id="lblActiveViewDate">Loading...</strong>
+        </div>
+      </div>
+
+      <!-- Search Input -->
+      <div class="mobile-search-wrap">
+        <input 
+          type="text" 
+          id="managerSearchInput" 
+          class="mobile-search-input" 
+          placeholder="Filter by student name..." 
+          oninput="renderManagerDashboard()"
+        >
+      </div>
+
+      <!-- Segmented Mobile Tab Bar (Thumb-Friendly Filter) -->
+      <div class="mobile-tab-bar">
+        <button type="button" class="mobile-tab-btn active" id="tabAll" onclick="setFilterTab('all')">
+          All <span class="tab-badge" id="tabBadgeAll">0</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tabTiffin" onclick="setFilterTab('tiffin')">
+          Tiffin <span class="tab-badge" id="tabBadgeTiffin">0</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tabLunch" onclick="setFilterTab('lunch')">
+          Lunch <span class="tab-badge" id="tabBadgeLunch">0</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tabDinner" onclick="setFilterTab('dinner')">
+          Dinner <span class="tab-badge" id="tabBadgeDinner">0</span>
+        </button>
+      </div>
+
+      <!-- ==================================================== -->
+      <!-- 3 MEAL CHECKLIST SECTIONS -->
+      <!-- ==================================================== -->
+
+      <!-- SECTION 1: Morning Tiffin -->
+      <div class="mobile-meal-section" id="sectionTiffin">
+        <div class="mobile-section-header">
+          <h3>Morning Tiffin (Next Day)</h3>
+          <span class="mobile-count-pill" id="tiffinTotalCount">0</span>
+        </div>
+        <div class="mobile-student-list" id="listTiffin">
+          <!-- Injected via manager.js -->
+        </div>
+        <div id="emptyTiffinMsg" class="mobile-empty-notice hidden">
+          No morning tiffins booked for this date.
+        </div>
+      </div>
+
+      <!-- SECTION 2: Lunch Late Thali -->
+      <div class="mobile-meal-section" id="sectionLunch">
+        <div class="mobile-section-header">
+          <h3>Lunch Late Thali (Today)</h3>
+          <span class="mobile-count-pill" id="lunchTotalCount">0</span>
+        </div>
+        <div class="mobile-student-list" id="listLunch">
+          <!-- Injected via manager.js -->
+        </div>
+        <div id="emptyLunchMsg" class="mobile-empty-notice hidden">
+          No lunch late thalis booked for this date.
+        </div>
+      </div>
+
+      <!-- SECTION 3: Dinner Late Thali -->
+      <div class="mobile-meal-section" id="sectionDinner">
+        <div class="mobile-section-header">
+          <h3>Dinner Late Thali (Today)</h3>
+          <span class="mobile-count-pill" id="dinnerTotalCount">0</span>
+        </div>
+        <div class="mobile-student-list" id="listDinner">
+          <!-- Injected via manager.js -->
+        </div>
+        <div id="emptyDinnerMsg" class="mobile-empty-notice hidden">
+          No dinner late thalis booked for this date.
+        </div>
+      </div>
+
+      <!-- Bottom Manager Controls -->
+      <div class="mobile-manager-bottom">
+        <button type="button" class="btn-clear-date-mobile" onclick="clearDateBookings()">
+          Clear Current Date Records
+        </button>
+        <div class="sync-status-footer">
+          <span class="live-dot"></span> Live SQLite Database Connected
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Mobile Footer -->
+    <footer class="mobile-app-footer">
+      <p>Adarsh Dining Hall • Mobile Kitchen Portal</p>
+    </footer>
+
+  </div>
+
+  <script src="manager.js"></script>
+</body>
+</html>
