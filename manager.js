@@ -222,7 +222,10 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
           <span class="student-name-text">${escapeHtml(entry.student_name)}</span>
         </div>
       </div>
-      <div class="student-done-btn ${isDone ? 'checked' : ''}" title="Mark Collected"></div>
+      <div class="row-actions-right">
+        <button type="button" class="btn-delete-row" title="Cancel Booking & Unlock Student" onclick="event.stopPropagation(); deleteSingleBooking('${entry.id}', '${escapeHtml(entry.student_name)}')">&times;</button>
+        <div class="student-done-btn ${isDone ? 'checked' : ''}" title="Mark Collected"></div>
+      </div>
     `;
 
     // Tap anywhere on the row to toggle status
@@ -233,6 +236,31 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
     listEl.appendChild(row);
   });
 }
+
+// Delete Single Booking & Unlock Student
+window.deleteSingleBooking = async function(entryId, studentName) {
+  if (!confirm(`Cancel booking for "${studentName}"? This will allow them to book again.`)) {
+    return;
+  }
+
+  // Optimistic UI update
+  currentBookings = currentBookings.filter(b => b.id !== entryId);
+  renderManagerDashboard();
+
+  try {
+    const res = await fetch(`${API_BASE}/api/bookings/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: entryId })
+    });
+    if (!res.ok) throw new Error('Delete failed');
+    showToast(`Removed "${studentName}". Student is now unlocked to re-book.`);
+  } catch (err) {
+    console.error('Failed to delete booking:', err);
+    showToast('Failed to delete booking.');
+    loadBookingsFromDb(true);
+  }
+};
 
 // Toggle Done in SQLite Database
 window.toggleDoneStatus = async function(entryId, targetState) {
@@ -263,7 +291,7 @@ window.clearDateBookings = async function() {
   const selectedDate = currentViewingDate;
   const formattedDate = formatDisplayDate(selectedDate);
 
-  if (!confirm(`Are you sure you want to clear all records for ${formattedDate}? Counts will reset to 0.`)) {
+  if (!confirm(`Are you sure you want to clear all records for ${formattedDate}? Counts will reset to 0 and all students will be unlocked to book again.`)) {
     return;
   }
 
@@ -276,7 +304,7 @@ window.clearDateBookings = async function() {
     if (!res.ok) throw new Error('Clear failed');
     currentBookings = [];
     renderManagerDashboard();
-    showToast(`Records cleared for ${formattedDate}.`);
+    showToast(`Records cleared for ${formattedDate}. Students unlocked.`);
   } catch (err) {
     console.error('Failed to clear database records:', err);
     showToast('Error clearing records.');

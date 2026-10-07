@@ -226,6 +226,10 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             self.handle_clear_bookings(body)
             return
 
+        if path == "/api/bookings/delete":
+            self.handle_delete_booking(body)
+            return
+
         self.send_json_response(404, {"error": "Endpoint not found"})
 
     def handle_create_booking(self, body):
@@ -370,6 +374,18 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             conn.commit()
 
         self.send_json_response(200, {"success": True})
+
+    def handle_delete_booking(self, body):
+        entry_id = body.get("id")
+        if not entry_id:
+            self.send_json_response(400, {"error": "Missing booking ID."})
+            return
+
+        with get_db() as conn:
+            conn.execute("DELETE FROM bookings WHERE id = ?", (entry_id,))
+            conn.commit()
+
+        self.send_json_response(200, {"success": True, "id": entry_id})
 
     def send_json_response(self, status_code, data):
         response_bytes = json.dumps(data).encode("utf-8")

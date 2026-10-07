@@ -58,9 +58,11 @@ const MEAL_CONFIG = {
 };
 
 let serverStatusCache = null;
+let activeDeviceBookings = {};
 
 // ========================================================
-// Device Lock Helpers (1 Booking per Phone per Date)
+// Device Lock Helpers (Server is the Single Source of Truth)
+// 1 Booking per Phone per Date • Unlocked ONLY when Manager Clears
 // ========================================================
 function getOrCreateDeviceId() {
   let devId = null;
@@ -90,7 +92,7 @@ function getOrCreateDeviceId() {
   return devId;
 }
 
-function getDeviceBookings() {
+function getStoredDeviceBookings() {
   try {
     const raw = localStorage.getItem(DEVICE_LOCK_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -99,21 +101,26 @@ function getDeviceBookings() {
   }
 }
 
+// Initial cache from storage
+activeDeviceBookings = getStoredDeviceBookings();
+
 function saveDeviceBooking(dateStr, mealKey, studentName, roomNumber) {
-  const store = getDeviceBookings();
-  store[`${dateStr}_${mealKey}`] = {
-    name: studentName,
-    room: roomNumber,
-    date: dateStr,
-    meal: mealKey,
+  activeDeviceBookings[`${dateStr}_${mealKey}`] = {
+    booked: true,
+    student_name: studentName,
+    room_number: roomNumber,
+    meal_date: dateStr,
+    meal_type: mealKey,
     bookedAt: new Date().toISOString()
   };
-  localStorage.setItem(DEVICE_LOCK_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(DEVICE_LOCK_KEY, JSON.stringify(activeDeviceBookings));
+  } catch (e) {}
 }
 
 function isBookedOnThisDevice(dateStr, mealKey) {
-  const store = getDeviceBookings();
-  return store[`${dateStr}_${mealKey}`] || null;
+  const key = `${dateStr}_${mealKey}`;
+  return activeDeviceBookings[key] || null;
 }
 
 // Date helpers
@@ -149,31 +156,27 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchServerStatus();
   setupFormListener();
   
-  // Re-sync with server every 30 seconds
-  setInterval(fetchServerStatus, 30000);
+  // Fast re-sync every 3 seconds so manager actions unlock students immediately
+  setInterval(fetchServerStatus, 3000);
+  window.addEventListener('focus', fetchServerStatus);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') fetchServerStatus();
+  });
 });
 
-// Fetch status from SQLite backend
+// Fetch status from SQLite backend (Database is source of truth)
 async function fetchServerStatus() {
   try {
     const devId = getOrCreateDeviceId();
     const res = await fetch(`${API_BASE}/api/status?device_id=${encodeURIComponent(devId)}`);
     if (res.ok) {
       serverStatusCache = await res.json();
-      // Sync any active bookings from database onto this device
-      if (serverStatusCache.device_bookings) {
-        const store = getDeviceBookings();
-        for (const [key, val] of Object.entries(serverStatusCache.device_bookings)) {
-          store[key] = {
-            name: val.student_name,
-            room: val.room_number,
-            date: val.meal_date,
-            meal: val.meal_type,
-            bookedAt: new Date().toISOString()
-          };
-        }
-        localStorage.setItem(DEVICE_LOCK_KEY, JSON.stringify(store));
-      }
+      // When manager clears bookings in manager site, device_bookings becomes empty
+      // Overwrite local state so student is immediately unlocked!
+      activeDeviceBookings = serverStatusCache.device_bookings || {};
+      try {
+        localStorage.setItem(DEVICE_LOCK_KEY, JSON.stringify(activeDeviceBookings));
+      } catch (e) {}
     }
   } catch (err) {
     console.warn('Backend status check fallback to client clock:', err);
@@ -460,7 +463,7 @@ window.resetFormForNewEntry = function() {
   if (selectionError) selectionError.classList.add('hidden');
   successCard.classList.add('hidden');
   messOrderForm.classList.remove('hidden');
-  applyTimeLockEnforcement();
+  fetchServerStatus();
 };
 
 function showToast(msg) {

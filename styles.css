@@ -166,20 +166,6 @@ body.mobile-body {
   color: #ffffff;
 }
 
-/* Assurance Note */
-.assurance-note {
-  background: #0f172a;
-  border: 1px solid #1e3a8a;
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 0.95rem;
-  font-size: 0.82rem;
-  color: #93c5fd;
-  line-height: 1.45;
-}
-
-.assurance-note strong {
-  color: #ffffff;
-}
 
 .uppercase-input {
   text-transform: uppercase;
@@ -868,6 +854,37 @@ body.mobile-body {
   font-weight: 700;
   color: #ffffff;
   line-height: 1.25;
+}
+
+.row-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-left: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-delete-row {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: #141416;
+  border: 1.5px solid #27272a;
+  color: #ef4444;
+  font-size: 1.25rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.15s;
+}
+
+.btn-delete-row:active {
+  background: #450a0a;
+  border-color: #ef4444;
+  transform: scale(0.92);
 }
 
 /* Done Check Toggle Button (32px Thumb-Friendly) */
