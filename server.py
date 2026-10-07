@@ -53,18 +53,21 @@ def init_db():
                 id TEXT PRIMARY KEY,
                 student_name TEXT NOT NULL,
                 room_number TEXT NOT NULL DEFAULT '',
+                device_id TEXT NOT NULL DEFAULT '',
                 meal_type TEXT NOT NULL,
                 meal_date TEXT NOT NULL,
                 is_done INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL
             )
         """)
-        # Safe migration if table exists without room_number
+        # Safe migration if table exists without new columns
         cur = conn.cursor()
         cur.execute("PRAGMA table_info(bookings)")
         columns = [row["name"] for row in cur.fetchall()]
         if "room_number" not in columns:
             cur.execute("ALTER TABLE bookings ADD COLUMN room_number TEXT NOT NULL DEFAULT ''")
+        if "device_id" not in columns:
+            cur.execute("ALTER TABLE bookings ADD COLUMN device_id TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
 
@@ -74,7 +77,7 @@ def get_ist_now():
     return datetime.datetime.now(IST)
 
 
-def get_current_status():
+def get_current_status(device_id=None):
     now = get_ist_now()
     today_str = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
@@ -99,11 +102,33 @@ def get_current_status():
             return "Closed (Opens at 09:00 AM)"
         return f"Closed (Cut-off passed)"
 
+    device_bookings = {}
+    if device_id:
+        try:
+            with get_db() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT meal_type, meal_date, student_name, room_number FROM bookings WHERE device_id = ? AND meal_date IN (?, ?)",
+                    (device_id, today_str, tomorrow_str)
+                )
+                for row in cur.fetchall():
+                    key = f"{row['meal_date']}_{row['meal_type']}"
+                    device_bookings[key] = {
+                        "booked": True,
+                        "student_name": row["student_name"],
+                        "room_number": row["room_number"],
+                        "meal_date": row["meal_date"],
+                        "meal_type": row["meal_type"]
+                    }
+        except Exception:
+            pass
+
     return {
         "current_time": now.strftime("%I:%M:%S %p"),
         "today": today_str,
         "tomorrow": tomorrow_str,
         "is_after_open": is_after_open,
+        "device_bookings": device_bookings,
         "meals": {
             "tiffin": {
                 "open": tiffin_open,
@@ -149,7 +174,9 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path == "/api/status":
-            self.send_json_response(200, get_current_status())
+            qs = parse_qs(parsed.query)
+            dev_id = qs.get("device_id", [None])[0]
+            self.send_json_response(200, get_current_status(dev_id))
             return
 
         if path == "/api/bookings":
@@ -202,23 +229,32 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
         self.send_json_response(404, {"error": "Endpoint not found"})
 
     def handle_create_booking(self, body):
-        student_name = (body.get("student_name") or "").strip()
-        room_number = (body.get("room_number") or "").strip().upper()
+        student_name = " ".join((body.get("student_name") or "").strip().split())
+        room_number = " ".join((body.get("room_number") or "").strip().upper().split())
+        device_id = (body.get("device_id") or "").strip()
         requested_meals = body.get("meals") or []
 
         if not student_name:
             self.send_json_response(400, {"error": "Student name is required."})
             return
 
+        if len(student_name) < 2:
+            self.send_json_response(400, {"error": "Please enter a valid student name."})
+            return
+
         if not room_number:
             self.send_json_response(400, {"error": "Room number is required (e.g. 204 or B-102)."})
+            return
+
+        if not device_id:
+            self.send_json_response(400, {"error": "Device verification token missing. Please refresh your page."})
             return
 
         if not requested_meals or not isinstance(requested_meals, list):
             self.send_json_response(400, {"error": "At least one meal option must be selected."})
             return
 
-        status = get_current_status()
+        status = get_current_status(device_id)
         now_str = get_ist_now().strftime("%Y-%m-%d %I:%M:%S %p")
 
         # Strict booking window validation
@@ -236,23 +272,50 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             self.send_json_response(400, {"error": err_msg})
             return
 
-        # Room Number Duplicate Check (Strict 1 meal per room per date)
+        # Anti-Duplication Verifications
         with get_db() as conn:
             cur = conn.cursor()
             for meal in requested_meals:
                 meal_key = meal.lower()
                 meal_meta = status["meals"][meal_key]
                 assigned_date = meal_meta["meal_date"]
+
+                # 1. Phone / Device Check (Strict 1 booking per phone per meal date)
                 cur.execute(
-                    "SELECT id, student_name FROM bookings WHERE meal_type = ? AND meal_date = ? AND UPPER(room_number) = ?",
-                    (meal_key, assigned_date, room_number)
+                    "SELECT id, student_name, room_number FROM bookings WHERE meal_type = ? AND meal_date = ? AND device_id = ?",
+                    (meal_key, assigned_date, device_id)
                 )
-                existing = cur.fetchone()
-                if existing:
+                dev_existing = cur.fetchone()
+                if dev_existing:
                     self.send_json_response(400, {
-                        "error": f"Room {room_number} already has a {meal_meta['label']} reservation for {assigned_date} (by {existing['student_name']}). Maximum 1 meal per room is allowed to prevent food wastage."
+                        "error": f"This phone has already been used to reserve {meal_meta['label']} for {assigned_date} (for {dev_existing['student_name']}, Room {dev_existing['room_number']}). Only 1 booking per phone is allowed."
                     })
                     return
+
+                # Fetch all existing bookings for this meal and date
+                cur.execute(
+                    "SELECT id, student_name, room_number FROM bookings WHERE meal_type = ? AND meal_date = ?",
+                    (meal_key, assigned_date)
+                )
+                existing_for_meal = cur.fetchall()
+
+                # 2. Strict Unique Name Check (No names can be repeated for the same meal on the same date)
+                for rec in existing_for_meal:
+                    rec_name_norm = " ".join(rec["student_name"].lower().split())
+                    if rec_name_norm == student_name.lower():
+                        self.send_json_response(400, {
+                            "error": f"The student name '{student_name}' is already registered for {meal_meta['label']} on {assigned_date} (Room {rec['room_number']}). Duplicate names are strictly not allowed."
+                        })
+                        return
+
+                # 3. Room Number Check (1 booking per room per meal date)
+                for rec in existing_for_meal:
+                    rec_room_norm = " ".join(rec["room_number"].upper().split())
+                    if rec_room_norm == room_number:
+                        self.send_json_response(400, {
+                            "error": f"Room {room_number} has already reserved {meal_meta['label']} for {assigned_date} (by {rec['student_name']}). Maximum 1 meal per room is allowed to prevent food wastage."
+                        })
+                        return
 
             created_entries = []
             for meal in requested_meals:
@@ -262,8 +325,8 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
                 entry_id = f"bk_{uuid.uuid4().hex[:10]}"
 
                 cur.execute(
-                    "INSERT INTO bookings (id, student_name, room_number, meal_type, meal_date, is_done, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
-                    (entry_id, student_name, room_number, meal_key, assigned_date, now_str)
+                    "INSERT INTO bookings (id, student_name, room_number, device_id, meal_type, meal_date, is_done, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+                    (entry_id, student_name, room_number, device_id, meal_key, assigned_date, now_str)
                 )
                 created_entries.append({
                     "id": entry_id,

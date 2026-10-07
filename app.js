@@ -6,6 +6,7 @@
 // ========================================================
 
 const API_BASE = '';
+const DEVICE_ID_KEY = 'adarsh_device_id_v2';
 const DEVICE_LOCK_KEY = 'adarsh_device_bookings_v2';
 
 // DOM Elements
@@ -61,6 +62,34 @@ let serverStatusCache = null;
 // ========================================================
 // Device Lock Helpers (1 Booking per Phone per Date)
 // ========================================================
+function getOrCreateDeviceId() {
+  let devId = null;
+  try {
+    devId = localStorage.getItem(DEVICE_ID_KEY);
+  } catch (e) {}
+
+  if (!devId) {
+    const match = document.cookie.match(/(?:^|;\s*)adarsh_device_id=([^;]+)/);
+    if (match) {
+      devId = decodeURIComponent(match[1]);
+    }
+  }
+
+  if (!devId) {
+    devId = 'phone_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+  }
+
+  try {
+    localStorage.setItem(DEVICE_ID_KEY, devId);
+  } catch (e) {}
+
+  try {
+    document.cookie = `adarsh_device_id=${encodeURIComponent(devId)}; path=/; max-age=31536000; SameSite=Lax`;
+  } catch (e) {}
+
+  return devId;
+}
+
 function getDeviceBookings() {
   try {
     const raw = localStorage.getItem(DEVICE_LOCK_KEY);
@@ -115,6 +144,7 @@ function formatDisplayDate(dateObj) {
 // Initializer
 // ========================================================
 document.addEventListener('DOMContentLoaded', () => {
+  getOrCreateDeviceId();
   setupClock();
   fetchServerStatus();
   setupFormListener();
@@ -126,9 +156,24 @@ document.addEventListener('DOMContentLoaded', () => {
 // Fetch status from SQLite backend
 async function fetchServerStatus() {
   try {
-    const res = await fetch(`${API_BASE}/api/status`);
+    const devId = getOrCreateDeviceId();
+    const res = await fetch(`${API_BASE}/api/status?device_id=${encodeURIComponent(devId)}`);
     if (res.ok) {
       serverStatusCache = await res.json();
+      // Sync any active bookings from database onto this device
+      if (serverStatusCache.device_bookings) {
+        const store = getDeviceBookings();
+        for (const [key, val] of Object.entries(serverStatusCache.device_bookings)) {
+          store[key] = {
+            name: val.student_name,
+            room: val.room_number,
+            date: val.meal_date,
+            meal: val.meal_type,
+            bookedAt: new Date().toISOString()
+          };
+        }
+        localStorage.setItem(DEVICE_LOCK_KEY, JSON.stringify(store));
+      }
     }
   } catch (err) {
     console.warn('Backend status check fallback to client clock:', err);
@@ -342,12 +387,14 @@ function setupFormListener() {
     submitBtn.textContent = 'Verifying & Saving...';
 
     try {
+      const devId = getOrCreateDeviceId();
       const response = await fetch(`${API_BASE}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           student_name: name,
           room_number: room,
+          device_id: devId,
           meals: selectedMeals
         })
       });
