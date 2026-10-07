@@ -52,17 +52,30 @@ def init_db():
             CREATE TABLE IF NOT EXISTS bookings (
                 id TEXT PRIMARY KEY,
                 student_name TEXT NOT NULL,
+                room_number TEXT NOT NULL DEFAULT '',
                 meal_type TEXT NOT NULL,
                 meal_date TEXT NOT NULL,
                 is_done INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL
             )
         """)
+        # Safe migration if table exists without room_number
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(bookings)")
+        columns = [row["name"] for row in cur.fetchall()]
+        if "room_number" not in columns:
+            cur.execute("ALTER TABLE bookings ADD COLUMN room_number TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
 
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+def get_ist_now():
+    return datetime.datetime.now(IST)
+
+
 def get_current_status():
-    now = datetime.datetime.now()
+    now = get_ist_now()
     today_str = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -143,12 +156,12 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             date_filter = qs.get("date", [None])[0]
             if not date_filter:
-                date_filter = datetime.date.today().strftime("%Y-%m-%d")
+                date_filter = get_ist_now().strftime("%Y-%m-%d")
 
             with get_db() as conn:
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT id, student_name, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date = ? ORDER BY id ASC",
+                    "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date = ? ORDER BY id ASC",
                     (date_filter,)
                 )
                 rows = [dict(r) for r in cur.fetchall()]
@@ -190,10 +203,15 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
 
     def handle_create_booking(self, body):
         student_name = (body.get("student_name") or "").strip()
+        room_number = (body.get("room_number") or "").strip().upper()
         requested_meals = body.get("meals") or []
 
         if not student_name:
             self.send_json_response(400, {"error": "Student name is required."})
+            return
+
+        if not room_number:
+            self.send_json_response(400, {"error": "Room number is required (e.g. 204 or B-102)."})
             return
 
         if not requested_meals or not isinstance(requested_meals, list):
@@ -201,7 +219,7 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             return
 
         status = get_current_status()
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+        now_str = get_ist_now().strftime("%Y-%m-%d %I:%M:%S %p")
 
         # Strict booking window validation
         invalid_meals = []
@@ -218,9 +236,25 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             self.send_json_response(400, {"error": err_msg})
             return
 
-        created_entries = []
+        # Room Number Duplicate Check (Strict 1 meal per room per date)
         with get_db() as conn:
             cur = conn.cursor()
+            for meal in requested_meals:
+                meal_key = meal.lower()
+                meal_meta = status["meals"][meal_key]
+                assigned_date = meal_meta["meal_date"]
+                cur.execute(
+                    "SELECT id, student_name FROM bookings WHERE meal_type = ? AND meal_date = ? AND UPPER(room_number) = ?",
+                    (meal_key, assigned_date, room_number)
+                )
+                existing = cur.fetchone()
+                if existing:
+                    self.send_json_response(400, {
+                        "error": f"Room {room_number} already has a {meal_meta['label']} reservation for {assigned_date} (by {existing['student_name']}). Maximum 1 meal per room is allowed to prevent food wastage."
+                    })
+                    return
+
+            created_entries = []
             for meal in requested_meals:
                 meal_key = meal.lower()
                 meal_meta = status["meals"][meal_key]
@@ -228,12 +262,13 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
                 entry_id = f"bk_{uuid.uuid4().hex[:10]}"
 
                 cur.execute(
-                    "INSERT INTO bookings (id, student_name, meal_type, meal_date, is_done, created_at) VALUES (?, ?, ?, ?, 0, ?)",
-                    (entry_id, student_name, meal_key, assigned_date, now_str)
+                    "INSERT INTO bookings (id, student_name, room_number, meal_type, meal_date, is_done, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
+                    (entry_id, student_name, room_number, meal_key, assigned_date, now_str)
                 )
                 created_entries.append({
                     "id": entry_id,
                     "student_name": student_name,
+                    "room_number": room_number,
                     "meal_type": meal_key,
                     "meal_label": meal_meta["label"],
                     "meal_date": assigned_date,
@@ -244,6 +279,7 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
         self.send_json_response(201, {
             "success": True,
             "student_name": student_name,
+            "room_number": room_number,
             "created": created_entries
         })
 

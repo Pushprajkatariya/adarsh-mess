@@ -1,16 +1,19 @@
 // ========================================================
 // Adarsh Dining Hall - Public Student Booking Portal Logic
 // Live SQLite Database Storage • Strict Time Enforcement
+// Device Lock (1 Phone = 1 Meal) • Room Number Lock
 // Zero Emojis • Navy Blue Theme
 // ========================================================
 
 const API_BASE = '';
+const DEVICE_LOCK_KEY = 'adarsh_device_bookings_v2';
 
 // DOM Elements
 const liveClockEl = document.getElementById('liveClock');
 const dispTodayDate = document.getElementById('dispTodayDate');
 const messOrderForm = document.getElementById('messOrderForm');
 const studentNameInput = document.getElementById('studentName');
+const roomNumberInput = document.getElementById('roomNumber');
 const submitBtn = document.getElementById('submitBtn');
 const selectionError = document.getElementById('selectionError');
 const successCard = document.getElementById('successCard');
@@ -56,6 +59,59 @@ const MEAL_CONFIG = {
 let serverStatusCache = null;
 
 // ========================================================
+// Device Lock Helpers (1 Booking per Phone per Date)
+// ========================================================
+function getDeviceBookings() {
+  try {
+    const raw = localStorage.getItem(DEVICE_LOCK_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveDeviceBooking(dateStr, mealKey, studentName, roomNumber) {
+  const store = getDeviceBookings();
+  store[`${dateStr}_${mealKey}`] = {
+    name: studentName,
+    room: roomNumber,
+    date: dateStr,
+    meal: mealKey,
+    bookedAt: new Date().toISOString()
+  };
+  localStorage.setItem(DEVICE_LOCK_KEY, JSON.stringify(store));
+}
+
+function isBookedOnThisDevice(dateStr, mealKey) {
+  const store = getDeviceBookings();
+  return store[`${dateStr}_${mealKey}`] || null;
+}
+
+// Date helpers
+function getIsoString(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayAndTomorrowDates() {
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  return { today, tomorrow };
+}
+
+function formatDisplayDate(dateObj) {
+  return dateObj.toLocaleDateString([], {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+}
+
+// ========================================================
 // Initializer
 // ========================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -66,23 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Re-sync with server every 30 seconds
   setInterval(fetchServerStatus, 30000);
 });
-
-// Format dates nicely (e.g., "Wed, 07 Oct 2026")
-function formatDisplayDate(dateObj) {
-  return dateObj.toLocaleDateString([], {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  });
-}
-
-function getTodayAndTomorrowDates() {
-  const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-  return { today, tomorrow };
-}
 
 // Fetch status from SQLite backend
 async function fetchServerStatus() {
@@ -155,16 +194,35 @@ function isMealOpen(mealKey) {
 
 function applyTimeLockEnforcement() {
   let anyMealOpen = false;
+  const { today, tomorrow } = getTodayAndTomorrowDates();
+  const todayIso = getIsoString(today);
+  const tomorrowIso = getIsoString(tomorrow);
 
   for (const [key, cfg] of Object.entries(MEAL_CONFIG)) {
-    const status = isMealOpen(key);
+    const timeStatus = isMealOpen(key);
+    const targetDateIso = (key === 'tiffin') ? tomorrowIso : todayIso;
+    const deviceRecord = isBookedOnThisDevice(targetDateIso, key);
 
-    if (status.open) {
+    if (deviceRecord) {
+      // Locked on this phone!
+      if (cfg.check) {
+        cfg.check.disabled = true;
+        cfg.check.checked = false;
+      }
+      if (cfg.box) {
+        cfg.box.classList.add('disabled');
+        cfg.box.classList.remove('selected');
+      }
+      if (cfg.badge) {
+        cfg.badge.textContent = `Already Booked on This Phone (Room ${deviceRecord.room})`;
+        cfg.badge.className = 'time-status-badge closed';
+      }
+    } else if (timeStatus.open) {
       anyMealOpen = true;
       if (cfg.check) cfg.check.disabled = false;
       if (cfg.box) cfg.box.classList.remove('disabled');
       if (cfg.badge) {
-        cfg.badge.textContent = status.reason;
+        cfg.badge.textContent = timeStatus.reason;
         cfg.badge.className = 'time-status-badge open';
       }
     } else {
@@ -177,7 +235,7 @@ function applyTimeLockEnforcement() {
         cfg.box.classList.remove('selected');
       }
       if (cfg.badge) {
-        cfg.badge.textContent = status.reason;
+        cfg.badge.textContent = timeStatus.reason;
         cfg.badge.className = 'time-status-badge closed';
       }
     }
@@ -187,7 +245,7 @@ function applyTimeLockEnforcement() {
   if (submitBtn) {
     if (!anyMealOpen) {
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Bookings Closed (Opens at 09:00 AM)';
+      submitBtn.textContent = 'Bookings Closed';
     } else {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Confirm Meal Booking';
@@ -199,6 +257,15 @@ function applyTimeLockEnforcement() {
 window.toggleMealCard = function(type) {
   const cfg = MEAL_CONFIG[type];
   if (!cfg || !cfg.check || !cfg.box) return;
+
+  const { today, tomorrow } = getTodayAndTomorrowDates();
+  const targetDateIso = (type === 'tiffin') ? getIsoString(tomorrow) : getIsoString(today);
+  const deviceRecord = isBookedOnThisDevice(targetDateIso, type);
+
+  if (deviceRecord) {
+    showToast(`You have already booked ${cfg.name} for Room ${deviceRecord.room} from this device.`);
+    return;
+  }
 
   if (cfg.check.disabled) {
     showToast('Booking for this meal is currently closed.');
@@ -223,7 +290,21 @@ function setupFormListener() {
     e.preventDefault();
 
     const name = studentNameInput.value.trim();
-    if (!name) return;
+    const room = roomNumberInput ? roomNumberInput.value.trim().toUpperCase() : '';
+
+    if (!name) {
+      studentNameInput.focus();
+      return;
+    }
+
+    if (!room) {
+      if (selectionError) {
+        selectionError.classList.remove('hidden');
+        selectionError.textContent = 'Please enter your Room Number.';
+      }
+      roomNumberInput.focus();
+      return;
+    }
 
     const selectedMeals = [];
     for (const [key, cfg] of Object.entries(MEAL_CONFIG)) {
@@ -241,10 +322,24 @@ function setupFormListener() {
       return;
     }
 
+    // Device lock check
+    const { today, tomorrow } = getTodayAndTomorrowDates();
+    for (const mealKey of selectedMeals) {
+      const targetDate = (mealKey === 'tiffin') ? getIsoString(tomorrow) : getIsoString(today);
+      if (isBookedOnThisDevice(targetDate, mealKey)) {
+        if (selectionError) {
+          selectionError.classList.remove('hidden');
+          selectionError.textContent = `You have already reserved ${MEAL_CONFIG[mealKey].name} from this device. Multiple bookings are blocked to prevent food wastage.`;
+          selectionError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+    }
+
     if (selectionError) selectionError.classList.add('hidden');
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Saving to Database...';
+    submitBtn.textContent = 'Verifying & Saving...';
 
     try {
       const response = await fetch(`${API_BASE}/api/bookings`, {
@@ -252,6 +347,7 @@ function setupFormListener() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           student_name: name,
+          room_number: room,
           meals: selectedMeals
         })
       });
@@ -262,31 +358,46 @@ function setupFormListener() {
         throw new Error(result.error || 'Failed to save booking.');
       }
 
-      showSuccessState(name, result.created);
+      // Record device lock on this phone
+      for (const entry of result.created) {
+        saveDeviceBooking(entry.meal_date, entry.meal_type, name, room);
+      }
+
+      showSuccessState(name, room, result.created);
     } catch (err) {
       console.error('Booking submission error:', err);
-      showToast(err.message || 'Error saving booking. Please try again.');
+      if (selectionError) {
+        selectionError.classList.remove('hidden');
+        selectionError.textContent = err.message;
+        selectionError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        showToast(err.message);
+      }
       submitBtn.disabled = false;
       submitBtn.textContent = 'Confirm Meal Booking';
     }
   });
 }
 
-function showSuccessState(studentName, createdEntries) {
+function showSuccessState(studentName, roomNumber, createdEntries) {
   messOrderForm.classList.add('hidden');
   successCard.classList.remove('hidden');
 
   let entriesHtml = createdEntries.map(entry => `
-    <div style="padding: 0.35rem 0; border-bottom: 1px solid #e2e8f0;">
-      <strong>${entry.meal_label}</strong> (${entry.target_label}): 
-      <span style="color: #1e3a8a; font-weight: 700;">${entry.meal_date}</span>
+    <div style="padding: 0.4rem 0; border-bottom: 1px solid #27272a;">
+      <strong style="color:#ffffff;">${entry.meal_label}</strong> (${entry.target_label}): 
+      <span style="color: #60a5fa; font-weight: 700;">${entry.meal_date}</span>
     </div>
   `).join('');
 
   submittedSummaryBox.innerHTML = `
-    <div><strong>Student Name:</strong> ${escapeHtml(studentName)}</div>
+    <div style="margin-bottom:0.35rem;"><strong>Student:</strong> ${escapeHtml(studentName)}</div>
+    <div style="margin-bottom:0.35rem;"><strong>Room:</strong> <span style="color:#60a5fa; font-weight:800; font-size:1.05rem;">${escapeHtml(roomNumber)}</span></div>
     <div style="margin-top: 0.5rem;">
       ${entriesHtml}
+    </div>
+    <div style="margin-top:0.65rem; font-size:0.78rem; color:#94a3b8; border-top:1px dashed #27272a; padding-top:0.45rem;">
+      Your room reservation is saved in the kitchen database. Extra bookings from this device are locked for this date.
     </div>
   `;
 
@@ -311,7 +422,7 @@ function showToast(msg) {
   toastEl.classList.add('show');
   setTimeout(() => {
     toastEl.classList.remove('show');
-  }, 2800);
+  }, 3200);
 }
 
 function escapeHtml(str) {

@@ -168,7 +168,10 @@ window.renderManagerDashboard = function() {
   const searchTerm = (managerSearchInput ? managerSearchInput.value : '').toLowerCase().trim();
 
   const filtered = currentBookings.filter(b => {
-    return !searchTerm || (b.student_name && b.student_name.toLowerCase().includes(searchTerm));
+    if (!searchTerm) return true;
+    const nameMatch = b.student_name && b.student_name.toLowerCase().includes(searchTerm);
+    const roomMatch = b.room_number && b.room_number.toLowerCase().includes(searchTerm);
+    return nameMatch || roomMatch;
   });
 
   const tiffinList = filtered.filter(b => b.meal_type === 'tiffin');
@@ -209,11 +212,15 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
     const row = document.createElement('div');
     const isDone = Boolean(entry.is_done);
     row.className = `mobile-student-row ${isDone ? 'row-collected' : ''}`;
+    const roomLabel = entry.room_number ? `Room ${escapeHtml(entry.room_number)}` : 'Room -';
 
     row.innerHTML = `
       <div class="mobile-student-left">
         <span class="student-sr-pill">${idx + 1}</span>
-        <span class="student-name-text">${escapeHtml(entry.student_name)}</span>
+        <div class="student-details-wrap">
+          <span class="student-room-badge">${roomLabel}</span>
+          <span class="student-name-text">${escapeHtml(entry.student_name)}</span>
+        </div>
       </div>
       <div class="student-done-btn ${isDone ? 'checked' : ''}" title="Mark Collected"></div>
     `;

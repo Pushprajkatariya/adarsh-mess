@@ -166,6 +166,27 @@ body.mobile-body {
   color: #ffffff;
 }
 
+/* Assurance Note */
+.assurance-note {
+  background: #0f172a;
+  border: 1px solid #1e3a8a;
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.95rem;
+  font-size: 0.82rem;
+  color: #93c5fd;
+  line-height: 1.45;
+}
+
+.assurance-note strong {
+  color: #ffffff;
+}
+
+.uppercase-input {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700 !important;
+}
+
 /* Input Cards */
 .input-card {
   background: #0a0a0a;
@@ -821,6 +842,25 @@ body.mobile-body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.student-details-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.student-room-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: #172554;
+  color: #93c5fd;
+  border: 1px solid #1e40af;
+  letter-spacing: 0.3px;
 }
 
 .student-name-text {
