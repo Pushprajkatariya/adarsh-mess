@@ -41,8 +41,8 @@ const MEAL_CONFIG = {
     badge: document.getElementById('badgeLunchStatus'),
     dateTag: document.getElementById('tagDateLunch'),
     closeHour: 13,
-    closeMinute: 0,
-    closeLabel: '01:00 PM'
+    closeMinute: 30,
+    closeLabel: '01:30 PM'
   },
   dinner: {
     name: 'Dinner Late Thali',

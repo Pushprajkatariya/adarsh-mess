@@ -30,8 +30,8 @@ OPEN_HOUR = 9
 OPEN_MINUTE = 0
 
 # Cut-offs
-LUNCH_CLOSE_HOUR = 13      # 1:00 PM
-LUNCH_CLOSE_MINUTE = 0
+LUNCH_CLOSE_HOUR = 13      # 1:30 PM
+LUNCH_CLOSE_MINUTE = 30
 
 DINNER_CLOSE_HOUR = 20     # 8:30 PM
 DINNER_CLOSE_MINUTE = 30
@@ -175,8 +175,8 @@ def get_current_status(device_id=None):
                 "meal_date": today_str,
                 "target_label": "Today",
                 "label": "Lunch Late Thali",
-                "status_text": get_reason(lunch_open, "09:00 AM", "01:00 PM"),
-                "timing": "09:00 AM - 01:00 PM (Today)"
+                "status_text": get_reason(lunch_open, "09:00 AM", "01:30 PM"),
+                "timing": "09:00 AM - 01:30 PM (Today)"
             },
             "dinner": {
                 "open": dinner_open,
