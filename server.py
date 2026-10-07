@@ -102,23 +102,55 @@ def get_current_status(device_id=None):
             return "Closed (Opens at 09:00 AM)"
         return f"Closed (Cut-off passed)"
 
-    device_bookings = {}
+    device_bookings = {
+        "tiffin": None,
+        "lunch": None,
+        "dinner": None
+    }
     if device_id:
         try:
             with get_db() as conn:
                 cur = conn.cursor()
+                # 1. Morning Tiffin: Only checks if this device booked for TOMORROW's date (Next Day)
                 cur.execute(
-                    "SELECT meal_type, meal_date, student_name, room_number FROM bookings WHERE device_id = ? AND meal_date IN (?, ?)",
-                    (device_id, today_str, tomorrow_str)
+                    "SELECT id, student_name, room_number, meal_date FROM bookings WHERE device_id = ? AND meal_type = 'tiffin' AND meal_date = ?",
+                    (device_id, tomorrow_str)
                 )
-                for row in cur.fetchall():
-                    key = f"{row['meal_date']}_{row['meal_type']}"
-                    device_bookings[key] = {
+                t_row = cur.fetchone()
+                if t_row:
+                    device_bookings["tiffin"] = {
                         "booked": True,
-                        "student_name": row["student_name"],
-                        "room_number": row["room_number"],
-                        "meal_date": row["meal_date"],
-                        "meal_type": row["meal_type"]
+                        "student_name": t_row["student_name"],
+                        "room_number": t_row["room_number"],
+                        "meal_date": t_row["meal_date"]
+                    }
+
+                # 2. Lunch: Only checks if this device booked for TODAY's date
+                cur.execute(
+                    "SELECT id, student_name, room_number, meal_date FROM bookings WHERE device_id = ? AND meal_type = 'lunch' AND meal_date = ?",
+                    (device_id, today_str)
+                )
+                l_row = cur.fetchone()
+                if l_row:
+                    device_bookings["lunch"] = {
+                        "booked": True,
+                        "student_name": l_row["student_name"],
+                        "room_number": l_row["room_number"],
+                        "meal_date": l_row["meal_date"]
+                    }
+
+                # 3. Dinner: Only checks if this device booked for TODAY's date
+                cur.execute(
+                    "SELECT id, student_name, room_number, meal_date FROM bookings WHERE device_id = ? AND meal_type = 'dinner' AND meal_date = ?",
+                    (device_id, today_str)
+                )
+                d_row = cur.fetchone()
+                if d_row:
+                    device_bookings["dinner"] = {
+                        "booked": True,
+                        "student_name": d_row["student_name"],
+                        "room_number": d_row["room_number"],
+                        "meal_date": d_row["meal_date"]
                     }
         except Exception:
             pass
@@ -182,19 +214,41 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/bookings":
             qs = parse_qs(parsed.query)
             date_filter = qs.get("date", [None])[0]
-            if not date_filter:
-                date_filter = get_ist_now().strftime("%Y-%m-%d")
+            view_mode = qs.get("view", [None])[0]
+
+            now_ist = get_ist_now()
+            today_str = now_ist.strftime("%Y-%m-%d")
+            tomorrow_str = (now_ist + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
             with get_db() as conn:
                 cur = conn.cursor()
-                cur.execute(
-                    "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date = ? ORDER BY id ASC",
-                    (date_filter,)
-                )
-                rows = [dict(r) for r in cur.fetchall()]
+                if date_filter and date_filter != "active":
+                    cur.execute(
+                        "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date = ? ORDER BY id ASC",
+                        (date_filter,)
+                    )
+                    rows = [dict(r) for r in cur.fetchall()]
+                    resp_date = date_filter
+                else:
+                    # Active Shift View:
+                    # Tiffin for Next Day (tomorrow), Lunch & Dinner for Today!
+                    cur.execute(
+                        """
+                        SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at 
+                        FROM bookings 
+                        WHERE (meal_type = 'tiffin' AND meal_date = ?)
+                           OR (meal_type IN ('lunch', 'dinner') AND meal_date = ?)
+                        ORDER BY id ASC
+                        """,
+                        (tomorrow_str, today_str)
+                    )
+                    rows = [dict(r) for r in cur.fetchall()]
+                    resp_date = "active"
 
             self.send_json_response(200, {
-                "date": date_filter,
+                "date": resp_date,
+                "today": today_str,
+                "tomorrow": tomorrow_str,
                 "bookings": rows
             })
             return
@@ -309,15 +363,6 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
                     if rec_name_norm == student_name.lower():
                         self.send_json_response(400, {
                             "error": f"The student name '{student_name}' is already registered for {meal_meta['label']} on {assigned_date} (Room {rec['room_number']}). Duplicate names are strictly not allowed."
-                        })
-                        return
-
-                # 3. Room Number Check (1 booking per room per meal date)
-                for rec in existing_for_meal:
-                    rec_room_norm = " ".join(rec["room_number"].upper().split())
-                    if rec_room_norm == room_number:
-                        self.send_json_response(400, {
-                            "error": f"Room {room_number} has already reserved {meal_meta['label']} for {assigned_date} (by {rec['student_name']}). Maximum 1 meal per room is allowed to prevent food wastage."
                         })
                         return
 

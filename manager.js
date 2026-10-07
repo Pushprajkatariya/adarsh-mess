@@ -92,9 +92,16 @@ function setupClock() {
   setInterval(update, 1000);
 }
 
+let isViewingActiveShift = true;
+
+const lblTiffinTargetDate = document.getElementById('lblTiffinTargetDate');
+const lblLunchTargetDate  = document.getElementById('lblLunchTargetDate');
+const lblDinnerTargetDate = document.getElementById('lblDinnerTargetDate');
+
 // Mobile Date Stepper
 window.stepDate = function(offsetDays) {
   if (!adminDateFilter) return;
+  isViewingActiveShift = false;
   const currentVal = adminDateFilter.value || getTodayIso();
   const [y, m, d] = currentVal.split('-').map(Number);
   const dateObj = new Date(y, m - 1, d);
@@ -109,6 +116,7 @@ window.stepDate = function(offsetDays) {
 
 window.resetToCurrentDate = function() {
   if (!adminDateFilter) return;
+  isViewingActiveShift = true;
   adminDateFilter.value = getTodayIso();
   loadBookingsFromDb();
 };
@@ -142,18 +150,45 @@ function applyTabVisibility() {
 // Load from SQLite Backend
 // ========================================================
 window.loadBookingsFromDb = async function(isSilent = false) {
-  const selectedDate = adminDateFilter ? (adminDateFilter.value || getTodayIso()) : getTodayIso();
-  currentViewingDate = selectedDate;
-
-  if (lblActiveViewDate) {
-    lblActiveViewDate.textContent = formatDisplayDate(selectedDate);
+  let url = `${API_BASE}/api/bookings`;
+  if (isViewingActiveShift) {
+    url += '?view=active';
+  } else {
+    const selectedDate = adminDateFilter ? (adminDateFilter.value || getTodayIso()) : getTodayIso();
+    currentViewingDate = selectedDate;
+    url += `?date=${encodeURIComponent(selectedDate)}`;
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/bookings?date=${encodeURIComponent(selectedDate)}`);
+    const res = await fetch(url);
     if (!res.ok) throw new Error('Database fetch failed');
     const data = await res.json();
     currentBookings = data.bookings || [];
+
+    if (isViewingActiveShift) {
+      if (lblActiveViewDate) {
+        lblActiveViewDate.textContent = 'Active Shift (Live)';
+      }
+      if (lblTiffinTargetDate && data.tomorrow) {
+        lblTiffinTargetDate.textContent = `Serving: Tomorrow (${formatDisplayDate(data.tomorrow)})`;
+      }
+      if (lblLunchTargetDate && data.today) {
+        lblLunchTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
+      }
+      if (lblDinnerTargetDate && data.today) {
+        lblDinnerTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
+      }
+    } else {
+      const selectedDate = adminDateFilter ? adminDateFilter.value : getTodayIso();
+      if (lblActiveViewDate) {
+        lblActiveViewDate.textContent = formatDisplayDate(selectedDate);
+      }
+      const dateText = `Serving Date: ${formatDisplayDate(selectedDate)}`;
+      if (lblTiffinTargetDate) lblTiffinTargetDate.textContent = dateText;
+      if (lblLunchTargetDate) lblLunchTargetDate.textContent = dateText;
+      if (lblDinnerTargetDate) lblDinnerTargetDate.textContent = dateText;
+    }
+
     renderManagerDashboard();
   } catch (err) {
     if (!isSilent) {
@@ -286,25 +321,27 @@ window.toggleDoneStatus = async function(entryId, targetState) {
   }
 };
 
-// Clear Database Records for Selected Date
+// Clear Database Records
 window.clearDateBookings = async function() {
-  const selectedDate = currentViewingDate;
-  const formattedDate = formatDisplayDate(selectedDate);
+  const confirmMsg = isViewingActiveShift
+    ? 'Are you sure you want to clear all active bookings (Tiffins for tomorrow, Lunch & Dinner for today)? Students will be unlocked to book again.'
+    : `Are you sure you want to clear all records for ${formatDisplayDate(adminDateFilter.value)}? Students will be unlocked to book again.`;
 
-  if (!confirm(`Are you sure you want to clear all records for ${formattedDate}? Counts will reset to 0 and all students will be unlocked to book again.`)) {
+  if (!confirm(confirmMsg)) {
     return;
   }
 
   try {
+    const payload = isViewingActiveShift ? {} : { date: adminDateFilter.value };
     const res = await fetch(`${API_BASE}/api/bookings/clear`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: selectedDate })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error('Clear failed');
     currentBookings = [];
     renderManagerDashboard();
-    showToast(`Records cleared for ${formattedDate}. Students unlocked.`);
+    showToast('Records cleared. Students are now unlocked to book again.');
   } catch (err) {
     console.error('Failed to clear database records:', err);
     showToast('Error clearing records.');

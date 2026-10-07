@@ -104,13 +104,12 @@ function getStoredDeviceBookings() {
 // Initial cache from storage
 activeDeviceBookings = getStoredDeviceBookings();
 
-function saveDeviceBooking(dateStr, mealKey, studentName, roomNumber) {
-  activeDeviceBookings[`${dateStr}_${mealKey}`] = {
+function saveDeviceBooking(mealKey, studentName, roomNumber, mealDate) {
+  activeDeviceBookings[mealKey] = {
     booked: true,
     student_name: studentName,
     room_number: roomNumber,
-    meal_date: dateStr,
-    meal_type: mealKey,
+    meal_date: mealDate,
     bookedAt: new Date().toISOString()
   };
   try {
@@ -118,9 +117,9 @@ function saveDeviceBooking(dateStr, mealKey, studentName, roomNumber) {
   } catch (e) {}
 }
 
-function isBookedOnThisDevice(dateStr, mealKey) {
-  const key = `${dateStr}_${mealKey}`;
-  return activeDeviceBookings[key] || null;
+function isBookedOnThisDevice(mealKey) {
+  const rec = activeDeviceBookings ? activeDeviceBookings[mealKey] : null;
+  return (rec && rec.booked) ? rec : null;
 }
 
 // Date helpers
@@ -242,17 +241,13 @@ function isMealOpen(mealKey) {
 
 function applyTimeLockEnforcement() {
   let anyMealOpen = false;
-  const { today, tomorrow } = getTodayAndTomorrowDates();
-  const todayIso = getIsoString(today);
-  const tomorrowIso = getIsoString(tomorrow);
 
   for (const [key, cfg] of Object.entries(MEAL_CONFIG)) {
     const timeStatus = isMealOpen(key);
-    const targetDateIso = (key === 'tiffin') ? tomorrowIso : todayIso;
-    const deviceRecord = isBookedOnThisDevice(targetDateIso, key);
+    const deviceRecord = isBookedOnThisDevice(key);
 
     if (deviceRecord) {
-      // Locked on this phone!
+      // Locked on this phone for this meal!
       if (cfg.check) {
         cfg.check.disabled = true;
         cfg.check.checked = false;
@@ -262,7 +257,8 @@ function applyTimeLockEnforcement() {
         cfg.box.classList.remove('selected');
       }
       if (cfg.badge) {
-        cfg.badge.textContent = `Already Booked on This Phone (Room ${deviceRecord.room})`;
+        const studentInfo = deviceRecord.student_name ? ` (${deviceRecord.student_name})` : '';
+        cfg.badge.textContent = `Already Booked on This Phone${studentInfo}`;
         cfg.badge.className = 'time-status-badge closed';
       }
     } else if (timeStatus.open) {
@@ -306,12 +302,10 @@ window.toggleMealCard = function(type) {
   const cfg = MEAL_CONFIG[type];
   if (!cfg || !cfg.check || !cfg.box) return;
 
-  const { today, tomorrow } = getTodayAndTomorrowDates();
-  const targetDateIso = (type === 'tiffin') ? getIsoString(tomorrow) : getIsoString(today);
-  const deviceRecord = isBookedOnThisDevice(targetDateIso, type);
+  const deviceRecord = isBookedOnThisDevice(type);
 
   if (deviceRecord) {
-    showToast(`You have already booked ${cfg.name} for Room ${deviceRecord.room} from this device.`);
+    showToast(`You have already booked ${cfg.name} from this phone.`);
     return;
   }
 
@@ -371,13 +365,11 @@ function setupFormListener() {
     }
 
     // Device lock check
-    const { today, tomorrow } = getTodayAndTomorrowDates();
     for (const mealKey of selectedMeals) {
-      const targetDate = (mealKey === 'tiffin') ? getIsoString(tomorrow) : getIsoString(today);
-      if (isBookedOnThisDevice(targetDate, mealKey)) {
+      if (isBookedOnThisDevice(mealKey)) {
         if (selectionError) {
           selectionError.classList.remove('hidden');
-          selectionError.textContent = `You have already reserved ${MEAL_CONFIG[mealKey].name} from this device. Multiple bookings are blocked to prevent food wastage.`;
+          selectionError.textContent = `You have already reserved ${MEAL_CONFIG[mealKey].name} from this phone.`;
           selectionError.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
         return;
@@ -410,7 +402,7 @@ function setupFormListener() {
 
       // Record device lock on this phone
       for (const entry of result.created) {
-        saveDeviceBooking(entry.meal_date, entry.meal_type, name, room);
+        saveDeviceBooking(entry.meal_type, name, room, entry.meal_date);
       }
 
       showSuccessState(name, room, result.created);
