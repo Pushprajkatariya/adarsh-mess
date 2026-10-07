@@ -55,7 +55,12 @@
           <span class="today-val" id="dispTodayDate">Loading...</span>
         </div>
 
-        <!-- Student Name Input -->
+        <!-- Anti-Wastage & Guaranteed Cooking Notice -->
+        <div class="assurance-note">
+          <strong>Guaranteed Preparation:</strong> Every booked meal will be prepared, even for 1 student. 1 booking per phone and unique student names enforced to prevent food wastage.
+        </div>
+
+        <!-- Student Details Inputs (Name + Room Number) -->
         <div class="input-card">
           <label class="field-label" for="studentName">Student Full Name</label>
           <input 
@@ -66,6 +71,18 @@
             required
             autocomplete="name"
           >
+          <div style="margin-top: 0.85rem;">
+            <label class="field-label" for="roomNumber">Room Number</label>
+            <input 
+              type="text" 
+              id="roomNumber" 
+              class="mobile-text-input uppercase-input" 
+              placeholder="e.g. 204 or B-102" 
+              required
+              autocomplete="off"
+              maxlength="15"
+            >
+          </div>
         </div>
 
         <!-- Meal Selection (3 Direct Cards: Tiffin for Next Day, Lunch/Dinner for Today) -->
