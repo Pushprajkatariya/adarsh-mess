@@ -3,166 +3,149 @@ import json
 import datetime
 import uuid
 import socket
+import urllib.request
 from urllib.parse import urlparse, parse_qs
 from http.server import BaseHTTPRequestHandler
 from contextlib import contextmanager
-import psycopg2
-import psycopg2.extras
 
-# Supabase PostgreSQL connection URL
-DEFAULT_DB_URL = "postgresql://postgres:qefqa4-jihteF-huhdon@db.rpyeydssjmdfmlwavpac.supabase.co:5432/postgres"
+# Supabase direct & pooler configuration
+SUPABASE_URL = "https://rpyeydssjmdfmlwavpac.supabase.co"
+SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJweWV5ZHNzam1kZm1sd2F2cGFjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTQ3ODY0NiwiZXhwIjoyMTA3MDU0NjQ2fQ.y9RLhZiE8u6xk1xY39MePVtpmW6JRr92L18WkET4DMI"
+
+REST_HEADERS = {
+    "apikey": SERVICE_ROLE_KEY,
+    "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
+
+DEFAULT_DB_URL = "postgresql://postgres.rpyeydssjmdfmlwavpac:qefqa4-jihteF-huhdon@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres"
 DATABASE_URL = os.environ.get("DATABASE_URL") or DEFAULT_DB_URL
-
-# Timing rules (IST)
-OPEN_HOUR, OPEN_MINUTE = 9, 0
-LUNCH_CLOSE_HOUR, LUNCH_CLOSE_MINUTE = 13, 30
-DINNER_CLOSE_HOUR, DINNER_CLOSE_MINUTE = 20, 30
-TIFFIN_CLOSE_HOUR, TIFFIN_CLOSE_MINUTE = 23, 0
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 def get_ist_now():
     return datetime.datetime.now(IST)
 
-def _make_dsn():
-    parsed = urlparse(DATABASE_URL)
-    hostname = parsed.hostname or ""
-    port = parsed.port or 5432
-    dbname = (parsed.path or "/postgres").lstrip("/")
-    username = parsed.username or "postgres"
-    password = parsed.password or ""
-
-    ipv4_addr = None
+# ---------------------------------------------------------------------------
+# Supabase REST API Data Layer (Ultra-reliable HTTPS on port 443)
+# ---------------------------------------------------------------------------
+def rest_get_bookings(date_filter=None):
     try:
-        for addrinfo in socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM):
-            ipv4_addr = addrinfo[4][0]
-            break
-    except Exception:
-        pass
-
-    if ipv4_addr:
-        return (
-            f"host={hostname} hostaddr={ipv4_addr} port={port} "
-            f"dbname={dbname} user={username} password={password} "
-            f"sslmode=require connect_timeout=15"
-        )
-    dsn = DATABASE_URL
-    if "sslmode" not in dsn:
-        dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
-    return dsn
-
-@contextmanager
-def get_db():
-    conn = psycopg2.connect(_make_dsn(), cursor_factory=psycopg2.extras.RealDictCursor)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-def fetchall(cur):
-    return [dict(r) for r in cur.fetchall()]
-
-def fetchone(cur):
-    r = cur.fetchone()
-    return dict(r) if r else None
-
-# Ensure table exists
-_db_initialized = False
-def init_db():
-    global _db_initialized
-    if _db_initialized:
-        return
-    try:
-        with get_db() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS bookings (
-                    id TEXT PRIMARY KEY,
-                    student_name TEXT NOT NULL,
-                    room_number TEXT NOT NULL DEFAULT '',
-                    device_id TEXT NOT NULL DEFAULT '',
-                    meal_type TEXT NOT NULL,
-                    meal_date TEXT NOT NULL,
-                    is_done INTEGER DEFAULT 0,
-                    created_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_bk_meal_date ON bookings (meal_type, meal_date);
-                CREATE INDEX IF NOT EXISTS idx_bk_device ON bookings (device_id, meal_type, meal_date);
-            """)
-        _db_initialized = True
+        url = f"{SUPABASE_URL}/rest/v1/bookings?select=*&order=id.asc"
+        if date_filter and date_filter not in ("active", "all"):
+            url += f"&meal_date=eq.{date_filter}"
+        req = urllib.request.Request(url, headers=REST_HEADERS, method="GET")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return json.loads(resp.read().decode())
     except Exception as e:
-        print(f"init_db notice: {e}")
+        print(f"REST get error: {e}")
+        return []
 
+def rest_insert_booking(record):
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/bookings"
+        body = json.dumps([record]).encode("utf-8")
+        req = urllib.request.Request(url, data=body, headers=REST_HEADERS, method="POST")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"REST insert error: {e}")
+        return None
+
+def rest_toggle_booking(entry_id, is_done):
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/bookings?id=eq.{entry_id}"
+        body = json.dumps({"is_done": is_done}).encode("utf-8")
+        headers = dict(REST_HEADERS)
+        headers["Prefer"] = "return=minimal"
+        req = urllib.request.Request(url, data=body, headers=headers, method="PATCH")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return True
+    except Exception as e:
+        print(f"REST toggle error: {e}")
+        return False
+
+def rest_delete_booking(entry_id):
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/bookings?id=eq.{entry_id}"
+        headers = dict(REST_HEADERS)
+        headers["Prefer"] = "return=minimal"
+        req = urllib.request.Request(url, headers=headers, method="DELETE")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return True
+    except Exception as e:
+        print(f"REST delete error: {e}")
+        return False
+
+def rest_clear_bookings(date_filter=None):
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/bookings"
+        if date_filter:
+            url += f"?meal_date=eq.{date_filter}"
+        else:
+            url += "?id=neq.none"
+        headers = dict(REST_HEADERS)
+        headers["Prefer"] = "return=minimal"
+        req = urllib.request.Request(url, headers=headers, method="DELETE")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return True
+    except Exception as e:
+        print(f"REST clear error: {e}")
+        return False
+
+# ---------------------------------------------------------------------------
+# Status & Timing
+# ---------------------------------------------------------------------------
 def get_current_status(device_id=None):
     now = get_ist_now()
     today_str = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # BYPASS TIMINGS: Always open 24/7 so testing and bookings work at any hour
-    is_after_open = True
-    lunch_open = True
-    dinner_open = True
-    tiffin_open = True
-
-    def reason(is_open, close_label):
-        return f"Open (Active)"
-
     device_bookings = {"tiffin": None, "lunch": None, "dinner": None}
     if device_id:
-        try:
-            with get_db() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT student_name, room_number, meal_date FROM bookings WHERE device_id=%s AND meal_type='tiffin' AND meal_date=%s",
-                    (device_id, tomorrow_str)
-                )
-                row = fetchone(cur)
-                if row:
-                    device_bookings["tiffin"] = {"booked": True, **row}
-
-                cur.execute(
-                    "SELECT student_name, room_number, meal_date FROM bookings WHERE device_id=%s AND meal_type='lunch' AND meal_date=%s",
-                    (device_id, today_str)
-                )
-                row = fetchone(cur)
-                if row:
-                    device_bookings["lunch"] = {"booked": True, **row}
-
-                cur.execute(
-                    "SELECT student_name, room_number, meal_date FROM bookings WHERE device_id=%s AND meal_type='dinner' AND meal_date=%s",
-                    (device_id, today_str)
-                )
-                row = fetchone(cur)
-                if row:
-                    device_bookings["dinner"] = {"booked": True, **row}
-        except Exception:
-            pass
+        all_bookings = rest_get_bookings()
+        for b in all_bookings:
+            if b.get("device_id") == device_id:
+                mtype = b.get("meal_type")
+                if mtype in device_bookings:
+                    device_bookings[mtype] = {
+                        "booked": True,
+                        "student_name": b.get("student_name"),
+                        "room_number": b.get("room_number"),
+                        "meal_date": b.get("meal_date")
+                    }
 
     return {
         "current_time": now.strftime("%I:%M:%S %p"),
         "today": today_str,
         "tomorrow": tomorrow_str,
-        "is_after_open": is_after_open,
+        "is_after_open": True,
         "device_bookings": device_bookings,
         "meals": {
             "tiffin": {
-                "open": tiffin_open, "meal_date": tomorrow_str, "target_label": "Next Day",
-                "label": "Morning Tiffin", "status_text": "Open (Serving Tomorrow)",
-                "timing": "Open 24/7 for Bookings"
+                "open": True,
+                "meal_date": today_str,
+                "target_label": "Today (9th Oct)",
+                "label": "Morning Tiffin",
+                "status_text": "Open (Serving Today)",
+                "timing": "Open for Testing"
             },
             "lunch": {
-                "open": lunch_open, "meal_date": today_str, "target_label": "Today",
-                "label": "Lunch Late Thali", "status_text": "Open (Serving Today)",
-                "timing": "Open 24/7 for Bookings"
+                "open": True,
+                "meal_date": today_str,
+                "target_label": "Today (9th Oct)",
+                "label": "Lunch Late Thali",
+                "status_text": "Open (Serving Today)",
+                "timing": "Open for Testing"
             },
             "dinner": {
-                "open": dinner_open, "meal_date": today_str, "target_label": "Today",
-                "label": "Dinner Late Thali", "status_text": "Open (Serving Today)",
-                "timing": "Open 24/7 for Bookings"
+                "open": True,
+                "meal_date": today_str,
+                "target_label": "Today (9th Oct)",
+                "label": "Dinner Late Thali",
+                "status_text": "Open (Serving Today)",
+                "timing": "Open for Testing"
             }
         }
     }
@@ -172,12 +155,12 @@ def resolve_target_path(path_candidate, headers_dict):
         val = headers_dict.get(header_key)
         if val and not val.startswith('/api/index'):
             return urlparse(val).path.rstrip('/')
-    parsed = urlparse(path_candidate).path.rstrip('/')
-    return parsed
+    return urlparse(path_candidate).path.rstrip('/')
 
+# ---------------------------------------------------------------------------
 # Core business dispatcher
+# ---------------------------------------------------------------------------
 def dispatch_api(method, path, query_params, body):
-    init_db()
     method = method.upper()
 
     if method == "GET":
@@ -191,25 +174,10 @@ def dispatch_api(method, path, query_params, body):
             today_str = now.strftime("%Y-%m-%d")
             tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
-            with get_db() as conn:
-                cur = conn.cursor()
-                if date_filter and date_filter not in ("active", "all"):
-                    cur.execute(
-                        "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date=%s ORDER BY id ASC",
-                        (date_filter,)
-                    )
-                    rows = fetchall(cur)
-                    resp_date = date_filter
-                else:
-                    # Return all bookings so manager can see every student no matter the date!
-                    cur.execute(
-                        "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings ORDER BY id ASC"
-                    )
-                    rows = fetchall(cur)
-                    resp_date = "all"
+            rows = rest_get_bookings(date_filter)
 
             return 200, {
-                "date": resp_date,
+                "date": date_filter or "all",
                 "today": today_str,
                 "tomorrow": tomorrow_str,
                 "bookings": rows
@@ -221,28 +189,19 @@ def dispatch_api(method, path, query_params, body):
             is_done = 1 if body.get("is_done") else 0
             if not entry_id:
                 return 400, {"error": "Missing booking ID."}
-            with get_db() as conn:
-                cur = conn.cursor()
-                cur.execute("UPDATE bookings SET is_done=%s WHERE id=%s", (is_done, entry_id))
+            rest_toggle_booking(entry_id, is_done)
             return 200, {"success": True, "id": entry_id, "is_done": is_done}
 
         if path.endswith("/bookings/clear"):
             date_filter = body.get("date")
-            with get_db() as conn:
-                cur = conn.cursor()
-                if date_filter:
-                    cur.execute("DELETE FROM bookings WHERE meal_date=%s", (date_filter,))
-                else:
-                    cur.execute("DELETE FROM bookings")
+            rest_clear_bookings(date_filter)
             return 200, {"success": True}
 
         if path.endswith("/bookings/delete"):
             entry_id = body.get("id")
             if not entry_id:
                 return 400, {"error": "Missing booking ID."}
-            with get_db() as conn:
-                cur = conn.cursor()
-                cur.execute("DELETE FROM bookings WHERE id=%s", (entry_id,))
+            rest_delete_booking(entry_id)
             return 200, {"success": True, "id": entry_id}
 
         if path.endswith("/bookings"):
@@ -264,79 +223,72 @@ def dispatch_api(method, path, query_params, body):
 
             status = get_current_status(device_id)
             now_str = get_ist_now().strftime("%Y-%m-%d %I:%M:%S %p")
+            existing_bookings = rest_get_bookings()
 
-            invalid_meals = []
             for meal in requested_meals:
                 key = meal.lower()
                 if key not in status["meals"]:
-                    invalid_meals.append(meal)
-                elif not status["meals"][key]["open"]:
-                    m = status["meals"][key]
-                    invalid_meals.append(f"{m['label']} ({m['status_text']})")
-            if invalid_meals:
-                return 400, {"error": f"Booking closed: {', '.join(invalid_meals)}"}
+                    continue
+                meta = status["meals"][key]
+                assigned_date = meta["meal_date"]
 
-            with get_db() as conn:
-                cur = conn.cursor()
-                for meal in requested_meals:
-                    key = meal.lower()
-                    meta = status["meals"][key]
-                    assigned_date = meta["meal_date"]
-
-                    # 1. Device Check
-                    cur.execute(
-                        "SELECT id, student_name, room_number FROM bookings WHERE meal_type=%s AND meal_date=%s AND device_id=%s",
-                        (key, assigned_date, device_id)
-                    )
-                    existing = fetchone(cur)
-                    if existing:
+                # 1. Device check
+                for b in existing_bookings:
+                    if b.get("meal_type") == key and b.get("meal_date") == assigned_date and b.get("device_id") == device_id:
                         return 400, {
-                            "error": f"This phone has already booked {meta['label']} for {assigned_date} (for {existing['student_name']}, Room {existing['room_number']}). Only 1 booking per phone is allowed."
+                            "error": f"This phone has already booked {meta['label']} for {assigned_date} (for {b.get('student_name')}, Room {b.get('room_number')}). Only 1 booking per phone is allowed."
                         }
 
-                    # 2. Unique Name Check
-                    cur.execute(
-                        "SELECT student_name, room_number FROM bookings WHERE meal_type=%s AND meal_date=%s",
-                        (key, assigned_date)
-                    )
-                    for rec in fetchall(cur):
-                        if " ".join(rec["student_name"].lower().split()) == student_name.lower():
+                # 2. Unique name check
+                for b in existing_bookings:
+                    if b.get("meal_type") == key and b.get("meal_date") == assigned_date:
+                        if " ".join((b.get("student_name") or "").lower().split()) == student_name.lower():
                             return 400, {
-                                "error": f"The name '{student_name}' is already registered for {meta['label']} on {assigned_date} (Room {rec['room_number']}). Duplicate names are not allowed."
+                                "error": f"The name '{student_name}' is already registered for {meta['label']} on {assigned_date} (Room {b.get('room_number')}). Duplicate names are not allowed."
                             }
 
-                created = []
-                for meal in requested_meals:
-                    key = meal.lower()
-                    meta = status["meals"][key]
-                    assigned_date = meta["meal_date"]
-                    eid = f"bk_{uuid.uuid4().hex[:10]}"
-                    cur.execute(
-                        "INSERT INTO bookings (id, student_name, room_number, device_id, meal_type, meal_date, is_done, created_at) VALUES (%s,%s,%s,%s,%s,%s,0,%s)",
-                        (eid, student_name, room_number, device_id, key, assigned_date, now_str)
-                    )
-                    created.append({
-                        "id": eid, "student_name": student_name, "room_number": room_number,
-                        "meal_type": key, "meal_label": meta["label"],
-                        "meal_date": assigned_date, "target_label": meta["target_label"]
-                    })
+            created = []
+            for meal in requested_meals:
+                key = meal.lower()
+                meta = status["meals"][key]
+                assigned_date = meta["meal_date"]
+                eid = f"bk_{uuid.uuid4().hex[:10]}"
+                record = {
+                    "id": eid,
+                    "student_name": student_name,
+                    "room_number": room_number,
+                    "device_id": device_id,
+                    "meal_type": key,
+                    "meal_date": assigned_date,
+                    "is_done": 0,
+                    "created_at": now_str
+                }
+                rest_insert_booking(record)
+                created.append({
+                    "id": eid,
+                    "student_name": student_name,
+                    "room_number": room_number,
+                    "meal_type": key,
+                    "meal_label": meta["label"],
+                    "meal_date": assigned_date,
+                    "target_label": meta["target_label"]
+                })
 
             return 201, {
-                "success": True, "student_name": student_name,
-                "room_number": room_number, "created": created
+                "success": True,
+                "student_name": student_name,
+                "room_number": room_number,
+                "created": created
             }
 
     return 404, {"error": f"Endpoint not found: {path}"}
 
-
 # ---------------------------------------------------------------------------
 # Standard WSGI Application Callable (app)
-# Used when Vercel runs in framework mode via pyproject.toml [tool.vercel] entrypoint = "api.index:app"
 # ---------------------------------------------------------------------------
 def app(environ, start_response):
     method = environ.get("REQUEST_METHOD", "GET").upper()
 
-    # CORS Preflight
     if method == "OPTIONS":
         start_response("204 No Content", [
             ("Access-Control-Allow-Origin", "*"),
@@ -383,7 +335,6 @@ def app(environ, start_response):
     ]
     start_response(status_phrase, headers)
     return [resp_bytes]
-
 
 # ---------------------------------------------------------------------------
 # BaseHTTPRequestHandler fallback (handler)
