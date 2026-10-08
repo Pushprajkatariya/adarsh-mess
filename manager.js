@@ -249,11 +249,16 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
     row.className = `mobile-student-row ${isDone ? 'row-collected' : ''}`;
     const roomLabel = entry.room_number ? `Room ${escapeHtml(entry.room_number)}` : 'Room -';
 
+    const dateLabel = entry.meal_date ? `<span class="student-room-badge" style="background: rgba(255,255,255,0.06); color: #8fa0c0; margin-left: 4px;">${escapeHtml(entry.meal_date)}</span>` : '';
+
     row.innerHTML = `
       <div class="mobile-student-left">
         <span class="student-sr-pill">${idx + 1}</span>
         <div class="student-details-wrap">
-          <span class="student-room-badge">${roomLabel}</span>
+          <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
+            <span class="student-room-badge">${roomLabel}</span>
+            ${dateLabel}
+          </div>
           <span class="student-name-text">${escapeHtml(entry.student_name)}</span>
         </div>
       </div>

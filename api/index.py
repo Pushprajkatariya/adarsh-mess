@@ -102,20 +102,14 @@ def get_current_status(device_id=None):
     today_str = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
-    cur_min = now.hour * 60 + now.minute
-    open_min = OPEN_HOUR * 60 + OPEN_MINUTE
-    is_after_open = cur_min >= open_min
-
-    lunch_open  = is_after_open and cur_min <= (LUNCH_CLOSE_HOUR * 60 + LUNCH_CLOSE_MINUTE)
-    dinner_open = is_after_open and cur_min <= (DINNER_CLOSE_HOUR * 60 + DINNER_CLOSE_MINUTE)
-    tiffin_open = is_after_open and cur_min <= (TIFFIN_CLOSE_HOUR * 60 + TIFFIN_CLOSE_MINUTE)
+    # BYPASS TIMINGS: Always open 24/7 so testing and bookings work at any hour
+    is_after_open = True
+    lunch_open = True
+    dinner_open = True
+    tiffin_open = True
 
     def reason(is_open, close_label):
-        if is_open:
-            return f"Open (Closes {close_label})"
-        if not is_after_open:
-            return "Closed (Opens at 09:00 AM)"
-        return "Closed (Cut-off passed)"
+        return f"Open (Active)"
 
     device_bookings = {"tiffin": None, "lunch": None, "dinner": None}
     if device_id:
@@ -157,18 +151,18 @@ def get_current_status(device_id=None):
         "meals": {
             "tiffin": {
                 "open": tiffin_open, "meal_date": tomorrow_str, "target_label": "Next Day",
-                "label": "Morning Tiffin", "status_text": reason(tiffin_open, "11:00 PM"),
-                "timing": "09:00 AM - 11:00 PM (Previous Day)"
+                "label": "Morning Tiffin", "status_text": "Open (Serving Tomorrow)",
+                "timing": "Open 24/7 for Bookings"
             },
             "lunch": {
                 "open": lunch_open, "meal_date": today_str, "target_label": "Today",
-                "label": "Lunch Late Thali", "status_text": reason(lunch_open, "01:30 PM"),
-                "timing": "09:00 AM - 01:30 PM (Today)"
+                "label": "Lunch Late Thali", "status_text": "Open (Serving Today)",
+                "timing": "Open 24/7 for Bookings"
             },
             "dinner": {
                 "open": dinner_open, "meal_date": today_str, "target_label": "Today",
-                "label": "Dinner Late Thali", "status_text": reason(dinner_open, "08:30 PM"),
-                "timing": "09:00 AM - 08:30 PM (Today)"
+                "label": "Dinner Late Thali", "status_text": "Open (Serving Today)",
+                "timing": "Open 24/7 for Bookings"
             }
         }
     }
@@ -199,7 +193,7 @@ def dispatch_api(method, path, query_params, body):
 
             with get_db() as conn:
                 cur = conn.cursor()
-                if date_filter and date_filter != "active":
+                if date_filter and date_filter not in ("active", "all"):
                     cur.execute(
                         "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date=%s ORDER BY id ASC",
                         (date_filter,)
@@ -207,15 +201,12 @@ def dispatch_api(method, path, query_params, body):
                     rows = fetchall(cur)
                     resp_date = date_filter
                 else:
-                    cur.execute("""
-                        SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at
-                        FROM bookings
-                        WHERE (meal_type='tiffin' AND meal_date=%s)
-                           OR (meal_type IN ('lunch','dinner') AND meal_date=%s)
-                        ORDER BY id ASC
-                    """, (tomorrow_str, today_str))
+                    # Return all bookings so manager can see every student no matter the date!
+                    cur.execute(
+                        "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings ORDER BY id ASC"
+                    )
                     rows = fetchall(cur)
-                    resp_date = "active"
+                    resp_date = "all"
 
             return 200, {
                 "date": resp_date,
