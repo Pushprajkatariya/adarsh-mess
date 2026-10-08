@@ -61,11 +61,42 @@ TIFFIN_CLOSE_MINUTE = 0
 # ---------------------------------------------------------------------------
 def _open_db():
     if USE_POSTGRES:
-        # Add sslmode=require for Supabase (pooler & direct both need TLS)
-        url = DATABASE_URL
-        if "sslmode" not in url:
-            url = url + ("&" if "?" in url else "?") + "sslmode=require"
-        conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+        import socket as _socket
+        from urllib.parse import urlparse as _urlparse
+
+        parsed = _urlparse(DATABASE_URL)
+        hostname = parsed.hostname
+        port = parsed.port or 5432
+        dbname = (parsed.path or "/postgres").lstrip("/")
+        username = parsed.username or "postgres"
+        password = parsed.password or ""
+
+        # Resolve hostname to IPv4 explicitly.
+        # Render free tier cannot reach IPv6; Supabase resolves to both.
+        # socket.AF_INET forces only IPv4 results.
+        ipv4_addr = None
+        try:
+            for addrinfo in _socket.getaddrinfo(hostname, port, _socket.AF_INET, _socket.SOCK_STREAM):
+                ipv4_addr = addrinfo[4][0]
+                break
+        except Exception:
+            pass
+
+        if ipv4_addr:
+            # hostaddr bypasses psycopg2's internal DNS (which may pick IPv6)
+            # host is still set for TLS SNI verification
+            dsn = (
+                f"host={hostname} hostaddr={ipv4_addr} port={port} "
+                f"dbname={dbname} user={username} password={password} "
+                f"sslmode=require connect_timeout=15"
+            )
+        else:
+            # Fallback: let psycopg2 resolve (add sslmode at minimum)
+            dsn = DATABASE_URL
+            if "sslmode" not in dsn:
+                dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
+
+        conn = psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor)
         return conn
     else:
         conn = sqlite3.connect(DB_PATH)
