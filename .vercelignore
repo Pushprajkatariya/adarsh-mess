@@ -1,0 +1,5 @@
+# Ignore local development server (Render-specific, not needed on Vercel)
+server.py
+Procfile
+mess.db
+.DS_Store
