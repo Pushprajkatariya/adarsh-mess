@@ -61,7 +61,11 @@ TIFFIN_CLOSE_MINUTE = 0
 # ---------------------------------------------------------------------------
 def _open_db():
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        # Add sslmode=require for Supabase (pooler & direct both need TLS)
+        url = DATABASE_URL
+        if "sslmode" not in url:
+            url = url + ("&" if "?" in url else "?") + "sslmode=require"
+        conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
         return conn
     else:
         conn = sqlite3.connect(DB_PATH)
