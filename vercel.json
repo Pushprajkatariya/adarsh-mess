@@ -1,0 +1,18 @@
+{
+  "rewrites": [
+    { "source": "/api/bookings/toggle", "destination": "/api/toggle" },
+    { "source": "/api/bookings/clear",  "destination": "/api/clear"  },
+    { "source": "/api/bookings/delete", "destination": "/api/delete" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" },
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    }
+  ]
+}
