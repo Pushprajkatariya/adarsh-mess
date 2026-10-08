@@ -9,7 +9,7 @@ from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
 
-# Default to user's Supabase connection if DATABASE_URL env var is not explicitly set in Vercel
+# Supabase PostgreSQL connection URL
 DEFAULT_DB_URL = "postgresql://postgres:qefqa4-jihteF-huhdon@db.rpyeydssjmdfmlwavpac.supabase.co:5432/postgres"
 DATABASE_URL = os.environ.get("DATABASE_URL") or DEFAULT_DB_URL
 
@@ -173,52 +173,26 @@ def get_current_status(device_id=None):
         }
     }
 
-class handler(BaseHTTPRequestHandler):
-    def send_json(self, status, data):
-        body = json.dumps(data).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-        self.end_headers()
-        self.wfile.write(body)
+def resolve_target_path(path_candidate, headers_dict):
+    for header_key in ('x-matched-path', 'x-forwarded-uri', 'request-uri'):
+        val = headers_dict.get(header_key)
+        if val and not val.startswith('/api/index'):
+            return urlparse(val).path.rstrip('/')
+    parsed = urlparse(path_candidate).path.rstrip('/')
+    return parsed
 
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
+# Core business dispatcher
+def dispatch_api(method, path, query_params, body):
+    init_db()
+    method = method.upper()
 
-    def read_json_body(self):
-        length = int(self.headers.get("Content-Length", 0))
-        if not length:
-            return {}
-        try:
-            return json.loads(self.rfile.read(length).decode("utf-8"))
-        except Exception:
-            return {}
+    if method == "GET":
+        if path.endswith("/status"):
+            dev_id = query_params.get("device_id", [None])[0]
+            return 200, get_current_status(dev_id)
 
-    def get_normalized_path(self):
-        # Support both native path and Vercel rewritten paths
-        raw = self.headers.get("x-matched-path") or self.headers.get("x-forwarded-uri") or self.path
-        return urlparse(raw).path.rstrip("/")
-
-    def do_GET(self):
-        init_db()
-        norm_path = self.get_normalized_path()
-        qs = parse_qs(urlparse(self.path).query)
-
-        if norm_path.endswith("/status"):
-            dev_id = qs.get("device_id", [None])[0]
-            self.send_json(200, get_current_status(dev_id))
-            return
-
-        if norm_path.endswith("/bookings"):
-            date_filter = qs.get("date", [None])[0]
+        if path.endswith("/bookings"):
+            date_filter = query_params.get("date", [None])[0]
             now = get_ist_now()
             today_str = now.strftime("%Y-%m-%d")
             tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
@@ -243,34 +217,25 @@ class handler(BaseHTTPRequestHandler):
                     rows = fetchall(cur)
                     resp_date = "active"
 
-            self.send_json(200, {
+            return 200, {
                 "date": resp_date,
                 "today": today_str,
                 "tomorrow": tomorrow_str,
                 "bookings": rows
-            })
-            return
+            }
 
-        self.send_json(404, {"error": "Endpoint not found"})
-
-    def do_POST(self):
-        init_db()
-        norm_path = self.get_normalized_path()
-        body = self.read_json_body()
-
-        if norm_path.endswith("/bookings/toggle"):
+    elif method == "POST":
+        if path.endswith("/bookings/toggle"):
             entry_id = body.get("id")
             is_done = 1 if body.get("is_done") else 0
             if not entry_id:
-                self.send_json(400, {"error": "Missing booking ID."})
-                return
+                return 400, {"error": "Missing booking ID."}
             with get_db() as conn:
                 cur = conn.cursor()
                 cur.execute("UPDATE bookings SET is_done=%s WHERE id=%s", (is_done, entry_id))
-            self.send_json(200, {"success": True, "id": entry_id, "is_done": is_done})
-            return
+            return 200, {"success": True, "id": entry_id, "is_done": is_done}
 
-        if norm_path.endswith("/bookings/clear"):
+        if path.endswith("/bookings/clear"):
             date_filter = body.get("date")
             with get_db() as conn:
                 cur = conn.cursor()
@@ -278,41 +243,33 @@ class handler(BaseHTTPRequestHandler):
                     cur.execute("DELETE FROM bookings WHERE meal_date=%s", (date_filter,))
                 else:
                     cur.execute("DELETE FROM bookings")
-            self.send_json(200, {"success": True})
-            return
+            return 200, {"success": True}
 
-        if norm_path.endswith("/bookings/delete"):
+        if path.endswith("/bookings/delete"):
             entry_id = body.get("id")
             if not entry_id:
-                self.send_json(400, {"error": "Missing booking ID."})
-                return
+                return 400, {"error": "Missing booking ID."}
             with get_db() as conn:
                 cur = conn.cursor()
                 cur.execute("DELETE FROM bookings WHERE id=%s", (entry_id,))
-            self.send_json(200, {"success": True, "id": entry_id})
-            return
+            return 200, {"success": True, "id": entry_id}
 
-        if norm_path.endswith("/bookings"):
+        if path.endswith("/bookings"):
             student_name = " ".join((body.get("student_name") or "").strip().split())
             room_number = " ".join((body.get("room_number") or "").strip().upper().split())
             device_id = (body.get("device_id") or "").strip()
             requested_meals = body.get("meals") or []
 
             if not student_name:
-                self.send_json(400, {"error": "Student name is required."})
-                return
+                return 400, {"error": "Student name is required."}
             if len(student_name) < 2:
-                self.send_json(400, {"error": "Please enter a valid student name."})
-                return
+                return 400, {"error": "Please enter a valid student name."}
             if not room_number:
-                self.send_json(400, {"error": "Room number is required (e.g. 204 or B-102)."})
-                return
+                return 400, {"error": "Room number is required (e.g. 204 or B-102)."}
             if not device_id:
-                self.send_json(400, {"error": "Device verification token missing. Please refresh your page."})
-                return
+                return 400, {"error": "Device verification token missing. Please refresh your page."}
             if not requested_meals or not isinstance(requested_meals, list):
-                self.send_json(400, {"error": "At least one meal option must be selected."})
-                return
+                return 400, {"error": "At least one meal option must be selected."}
 
             status = get_current_status(device_id)
             now_str = get_ist_now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -326,8 +283,7 @@ class handler(BaseHTTPRequestHandler):
                     m = status["meals"][key]
                     invalid_meals.append(f"{m['label']} ({m['status_text']})")
             if invalid_meals:
-                self.send_json(400, {"error": f"Booking closed: {', '.join(invalid_meals)}"})
-                return
+                return 400, {"error": f"Booking closed: {', '.join(invalid_meals)}"}
 
             with get_db() as conn:
                 cur = conn.cursor()
@@ -336,29 +292,27 @@ class handler(BaseHTTPRequestHandler):
                     meta = status["meals"][key]
                     assigned_date = meta["meal_date"]
 
-                    # 1. Device / Phone check
+                    # 1. Device Check
                     cur.execute(
                         "SELECT id, student_name, room_number FROM bookings WHERE meal_type=%s AND meal_date=%s AND device_id=%s",
                         (key, assigned_date, device_id)
                     )
                     existing = fetchone(cur)
                     if existing:
-                        self.send_json(400, {
+                        return 400, {
                             "error": f"This phone has already booked {meta['label']} for {assigned_date} (for {existing['student_name']}, Room {existing['room_number']}). Only 1 booking per phone is allowed."
-                        })
-                        return
+                        }
 
-                    # 2. Strict unique name check
+                    # 2. Unique Name Check
                     cur.execute(
                         "SELECT student_name, room_number FROM bookings WHERE meal_type=%s AND meal_date=%s",
                         (key, assigned_date)
                     )
                     for rec in fetchall(cur):
                         if " ".join(rec["student_name"].lower().split()) == student_name.lower():
-                            self.send_json(400, {
+                            return 400, {
                                 "error": f"The name '{student_name}' is already registered for {meta['label']} on {assigned_date} (Room {rec['room_number']}). Duplicate names are not allowed."
-                            })
-                            return
+                            }
 
                 created = []
                 for meal in requested_meals:
@@ -376,10 +330,110 @@ class handler(BaseHTTPRequestHandler):
                         "meal_date": assigned_date, "target_label": meta["target_label"]
                     })
 
-            self.send_json(201, {
+            return 201, {
                 "success": True, "student_name": student_name,
                 "room_number": room_number, "created": created
-            })
-            return
+            }
 
-        self.send_json(404, {"error": "Endpoint not found"})
+    return 404, {"error": f"Endpoint not found: {path}"}
+
+
+# ---------------------------------------------------------------------------
+# Standard WSGI Application Callable (app)
+# Used when Vercel runs in framework mode via pyproject.toml [tool.vercel] entrypoint = "api.index:app"
+# ---------------------------------------------------------------------------
+def app(environ, start_response):
+    method = environ.get("REQUEST_METHOD", "GET").upper()
+
+    # CORS Preflight
+    if method == "OPTIONS":
+        start_response("204 No Content", [
+            ("Access-Control-Allow-Origin", "*"),
+            ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+            ("Access-Control-Allow-Headers", "Content-Type"),
+        ])
+        return [b""]
+
+    headers_dict = {}
+    for k, v in environ.items():
+        if k.startswith("HTTP_"):
+            headers_dict[k[5:].lower().replace("_", "-")] = v
+
+    path_raw = environ.get("PATH_INFO", "")
+    path = resolve_target_path(path_raw, headers_dict)
+    query_params = parse_qs(environ.get("QUERY_STRING", ""))
+
+    body = {}
+    if method == "POST":
+        try:
+            cl = int(environ.get("CONTENT_LENGTH") or 0)
+            if cl > 0:
+                body = json.loads(environ["wsgi.input"].read(cl).decode("utf-8"))
+        except Exception:
+            body = {}
+
+    status_code, data = dispatch_api(method, path, query_params, body)
+    resp_bytes = json.dumps(data).encode("utf-8")
+
+    status_phrase = {
+        200: "200 OK",
+        201: "201 Created",
+        400: "400 Bad Request",
+        404: "404 Not Found"
+    }.get(status_code, f"{status_code} Result")
+
+    headers = [
+        ("Content-Type", "application/json; charset=utf-8"),
+        ("Content-Length", str(len(resp_bytes))),
+        ("Access-Control-Allow-Origin", "*"),
+        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+        ("Access-Control-Allow-Headers", "Content-Type"),
+        ("Cache-Control", "no-cache, no-store, must-revalidate"),
+    ]
+    start_response(status_phrase, headers)
+    return [resp_bytes]
+
+
+# ---------------------------------------------------------------------------
+# BaseHTTPRequestHandler fallback (handler)
+# ---------------------------------------------------------------------------
+class handler(BaseHTTPRequestHandler):
+    def send_json(self, status, data):
+        body = json.dumps(data).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_GET(self):
+        headers_dict = {k.lower(): v for k, v in self.headers.items()}
+        path = resolve_target_path(self.path, headers_dict)
+        query_params = parse_qs(urlparse(self.path).query)
+        status, data = dispatch_api("GET", path, query_params, {})
+        self.send_json(status, data)
+
+    def do_POST(self):
+        headers_dict = {k.lower(): v for k, v in self.headers.items()}
+        path = resolve_target_path(self.path, headers_dict)
+        query_params = parse_qs(urlparse(self.path).query)
+        length = int(self.headers.get("Content-Length", 0))
+        body = {}
+        if length > 0:
+            try:
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+            except Exception:
+                body = {}
+        status, data = dispatch_api("POST", path, query_params, body)
+        self.send_json(status, data)
