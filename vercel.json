@@ -1,17 +1,8 @@
 {
-  "routes": [
-    { "src": "/api/bookings/toggle", "dest": "/api/toggle" },
-    { "src": "/api/bookings/clear",  "dest": "/api/clear"  },
-    { "src": "/api/bookings/delete", "dest": "/api/delete" },
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Cache-Control": "no-cache, no-store, must-revalidate"
-      },
-      "continue": true
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
     }
   ]
 }
