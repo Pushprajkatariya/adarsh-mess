@@ -283,6 +283,51 @@ def dispatch_api(method, path, query_params, body):
 
     return 404, {"error": f"Endpoint not found: {path}"}
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+STATIC_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/messmanager.html": ("messmanager.html", "text/html; charset=utf-8"),
+    "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+    "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/manager.js": ("manager.js", "application/javascript; charset=utf-8"),
+}
+
+def get_static_response(path):
+    clean = (path or "").strip()
+    if not clean:
+        clean = "/"
+    base = os.path.basename(clean)
+
+    filename = None
+    mime = None
+
+    if clean in STATIC_FILES:
+        filename, mime = STATIC_FILES[clean]
+    elif base in ("index.html", "messmanager.html", "styles.css", "app.js", "manager.js"):
+        mime = {
+            "index.html": "text/html; charset=utf-8",
+            "messmanager.html": "text/html; charset=utf-8",
+            "styles.css": "text/css; charset=utf-8",
+            "app.js": "application/javascript; charset=utf-8",
+            "manager.js": "application/javascript; charset=utf-8"
+        }[base]
+        filename = base
+    else:
+        return None, None
+
+    for candidate_dir in (ROOT_DIR, os.path.join(ROOT_DIR, "public")):
+        fpath = os.path.join(candidate_dir, filename)
+        if os.path.exists(fpath):
+            try:
+                with open(fpath, "rb") as f:
+                    return mime, f.read()
+            except Exception:
+                pass
+
+    return None, None
+
 # ---------------------------------------------------------------------------
 # Standard WSGI Application Callable (app)
 # ---------------------------------------------------------------------------
@@ -305,6 +350,17 @@ def app(environ, start_response):
     path_raw = environ.get("PATH_INFO", "")
     path = resolve_target_path(path_raw, headers_dict)
     query_params = parse_qs(environ.get("QUERY_STRING", ""))
+
+    # 1. Check static file serving for GET requests
+    if method == "GET":
+        mime, content = get_static_response(path)
+        if content is not None:
+            start_response("200 OK", [
+                ("Content-Type", mime),
+                ("Content-Length", str(len(content))),
+                ("Cache-Control", "public, max-age=0, must-revalidate"),
+            ])
+            return [content]
 
     body = {}
     if method == "POST":
@@ -362,6 +418,18 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         headers_dict = {k.lower(): v for k, v in self.headers.items()}
         path = resolve_target_path(self.path, headers_dict)
+
+        # Check static file
+        mime, content = get_static_response(path)
+        if content is not None:
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+            self.end_headers()
+            self.wfile.write(content)
+            return
+
         query_params = parse_qs(urlparse(self.path).query)
         status, data = dispatch_api("GET", path, query_params, {})
         self.send_json(status, data)
