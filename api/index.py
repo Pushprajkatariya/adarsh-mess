@@ -102,6 +102,26 @@ def get_current_status(device_id=None):
     today_str = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
+    current_minutes = now.hour * 60 + now.minute
+    open_minutes = OPEN_HOUR * 60 + OPEN_MINUTE
+
+    lunch_close_minutes = LUNCH_CLOSE_HOUR * 60 + LUNCH_CLOSE_MINUTE
+    dinner_close_minutes = DINNER_CLOSE_HOUR * 60 + DINNER_CLOSE_MINUTE
+    tiffin_close_minutes = TIFFIN_CLOSE_HOUR * 60 + TIFFIN_CLOSE_MINUTE
+
+    is_after_open = current_minutes >= open_minutes
+
+    lunch_open = is_after_open and (current_minutes <= lunch_close_minutes)
+    dinner_open = is_after_open and (current_minutes <= dinner_close_minutes)
+    tiffin_open = is_after_open and (current_minutes <= tiffin_close_minutes)
+
+    def get_reason(is_open, open_time, close_label):
+        if is_open:
+            return f"Open (Closes {close_label})"
+        if not is_after_open:
+            return "Closed (Opens at 09:00 AM)"
+        return "Closed (Cut-off passed)"
+
     device_bookings = {"tiffin": None, "lunch": None, "dinner": None}
     if device_id:
         all_bookings = rest_get_bookings()
@@ -120,32 +140,32 @@ def get_current_status(device_id=None):
         "current_time": now.strftime("%I:%M:%S %p"),
         "today": today_str,
         "tomorrow": tomorrow_str,
-        "is_after_open": True,
+        "is_after_open": is_after_open,
         "device_bookings": device_bookings,
         "meals": {
             "tiffin": {
-                "open": True,
-                "meal_date": today_str,
-                "target_label": "Today (9th Oct)",
+                "open": tiffin_open,
+                "meal_date": tomorrow_str,
+                "target_label": "Next Day",
                 "label": "Morning Tiffin",
-                "status_text": "Open (Serving Today)",
-                "timing": "Open for Testing"
+                "status_text": get_reason(tiffin_open, "09:00 AM", "11:00 PM"),
+                "timing": "09:00 AM - 11:00 PM (Previous Day)"
             },
             "lunch": {
-                "open": True,
+                "open": lunch_open,
                 "meal_date": today_str,
-                "target_label": "Today (9th Oct)",
+                "target_label": "Today",
                 "label": "Lunch Late Thali",
-                "status_text": "Open (Serving Today)",
-                "timing": "Open for Testing"
+                "status_text": get_reason(lunch_open, "09:00 AM", "01:30 PM"),
+                "timing": "09:00 AM - 01:30 PM (Today)"
             },
             "dinner": {
-                "open": True,
+                "open": dinner_open,
                 "meal_date": today_str,
-                "target_label": "Today (9th Oct)",
+                "target_label": "Today",
                 "label": "Dinner Late Thali",
-                "status_text": "Open (Serving Today)",
-                "timing": "Open for Testing"
+                "status_text": get_reason(dinner_open, "09:00 AM", "08:30 PM"),
+                "timing": "09:00 AM - 08:30 PM (Today)"
             }
         }
     }
@@ -223,6 +243,20 @@ def dispatch_api(method, path, query_params, body):
 
             status = get_current_status(device_id)
             now_str = get_ist_now().strftime("%Y-%m-%d %I:%M:%S %p")
+
+            # Strict cut-off check
+            invalid_meals = []
+            for meal in requested_meals:
+                key = meal.lower()
+                if key not in status["meals"]:
+                    invalid_meals.append(meal)
+                elif not status["meals"][key]["open"]:
+                    meta = status["meals"][key]
+                    invalid_meals.append(f"{meta['label']} ({meta['status_text']})")
+
+            if invalid_meals:
+                return 400, {"error": f"Booking closed: {', '.join(invalid_meals)}"}
+
             existing_bookings = rest_get_bookings()
 
             for meal in requested_meals:

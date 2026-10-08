@@ -218,15 +218,32 @@ function setupClock() {
   }, 1000);
 }
 
-// Booking Window Evaluation
+// Strict Booking Window Evaluation
+// All bookings open strictly at 09:00 AM
 function isMealOpen(mealKey) {
   if (serverStatusCache && serverStatusCache.meals && serverStatusCache.meals[mealKey]) {
     return {
       open: Boolean(serverStatusCache.meals[mealKey].open),
-      reason: serverStatusCache.meals[mealKey].status_text || 'Open'
+      reason: serverStatusCache.meals[mealKey].status_text || 'Closed'
     };
   }
-  return { open: true, reason: 'Open (Active)' };
+
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const openMinutes = 9 * 60; // 09:00 AM
+
+  if (currentMinutes < openMinutes) {
+    return { open: false, reason: 'Closed (Opens at 09:00 AM)' };
+  }
+
+  const cfg = MEAL_CONFIG[mealKey];
+  const closeMinutes = cfg.closeHour * 60 + cfg.closeMinute;
+
+  if (currentMinutes > closeMinutes) {
+    return { open: false, reason: 'Closed (Cut-off passed)' };
+  }
+
+  return { open: true, reason: `Open (Closes ${cfg.closeLabel})` };
 }
 
 function applyTimeLockEnforcement() {
