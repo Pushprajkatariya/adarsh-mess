@@ -25,7 +25,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or DEFAULT_DB_URL
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 # Timing rules (IST)
-OPEN_HOUR, OPEN_MINUTE = 9, 0
+OPEN_HOUR, OPEN_MINUTE = 7, 0
 LUNCH_CLOSE_HOUR, LUNCH_CLOSE_MINUTE = 13, 30
 DINNER_CLOSE_HOUR, DINNER_CLOSE_MINUTE = 20, 30
 TIFFIN_CLOSE_HOUR, TIFFIN_CLOSE_MINUTE = 23, 0
@@ -125,7 +125,7 @@ def get_current_status(device_id=None):
         if is_open:
             return f"Open (Closes {close_label})"
         if not is_after_open:
-            return "Closed (Opens at 09:00 AM)"
+            return "Closed (Opens at 07:00 AM)"
         return "Closed (Cut-off passed)"
 
     device_bookings = {"tiffin": None, "lunch": None, "dinner": None}
@@ -154,24 +154,24 @@ def get_current_status(device_id=None):
                 "meal_date": tomorrow_str,
                 "target_label": "Next Day",
                 "label": "Morning Tiffin",
-                "status_text": get_reason(tiffin_open, "09:00 AM", "11:00 PM"),
-                "timing": "09:00 AM - 11:00 PM (Previous Day)"
+                "status_text": get_reason(tiffin_open, "07:00 AM", "11:00 PM"),
+                "timing": "07:00 AM - 11:00 PM (Previous Day)"
             },
             "lunch": {
                 "open": lunch_open,
                 "meal_date": today_str,
                 "target_label": "Today",
                 "label": "Lunch Late Thali",
-                "status_text": get_reason(lunch_open, "09:00 AM", "01:30 PM"),
-                "timing": "09:00 AM - 01:30 PM (Today)"
+                "status_text": get_reason(lunch_open, "07:00 AM", "01:30 PM"),
+                "timing": "07:00 AM - 01:30 PM (Today)"
             },
             "dinner": {
                 "open": dinner_open,
                 "meal_date": today_str,
                 "target_label": "Today",
                 "label": "Dinner Late Thali",
-                "status_text": get_reason(dinner_open, "09:00 AM", "08:30 PM"),
-                "timing": "09:00 AM - 08:30 PM (Today)"
+                "status_text": get_reason(dinner_open, "07:00 AM", "08:30 PM"),
+                "timing": "07:00 AM - 08:30 PM (Today)"
             }
         }
     }

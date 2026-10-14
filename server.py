@@ -43,7 +43,7 @@ PH = "%s" if USE_POSTGRES else "?"
 # ---------------------------------------------------------------------------
 # Timing Rules
 # ---------------------------------------------------------------------------
-OPEN_HOUR = 9
+OPEN_HOUR = 7
 OPEN_MINUTE = 0
 
 LUNCH_CLOSE_HOUR = 13      # 1:30 PM
@@ -193,7 +193,7 @@ def get_current_status(device_id=None):
         if is_open:
             return f"Open (Closes {close_label})"
         if not is_after_open:
-            return "Closed (Opens at 09:00 AM)"
+            return "Closed (Opens at 07:00 AM)"
         return "Closed (Cut-off passed)"
 
     device_bookings = {
@@ -259,7 +259,7 @@ def get_current_status(device_id=None):
                 "target_label": "Next Day",
                 "label": "Morning Tiffin",
                 "status_text": get_reason(tiffin_open, "11:00 PM"),
-                "timing": "09:00 AM - 11:00 PM (Previous Day)"
+                "timing": "07:00 AM - 11:00 PM (Previous Day)"
             },
             "lunch": {
                 "open": lunch_open,
@@ -267,7 +267,7 @@ def get_current_status(device_id=None):
                 "target_label": "Today",
                 "label": "Lunch Late Thali",
                 "status_text": get_reason(lunch_open, "01:30 PM"),
-                "timing": "09:00 AM - 01:30 PM (Today)"
+                "timing": "07:00 AM - 01:30 PM (Today)"
             },
             "dinner": {
                 "open": dinner_open,
@@ -275,7 +275,7 @@ def get_current_status(device_id=None):
                 "target_label": "Today",
                 "label": "Dinner Late Thali",
                 "status_text": get_reason(dinner_open, "08:30 PM"),
-                "timing": "09:00 AM - 08:30 PM (Today)"
+                "timing": "07:00 AM - 08:30 PM (Today)"
             }
         }
     }

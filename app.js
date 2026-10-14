@@ -219,7 +219,7 @@ function setupClock() {
 }
 
 // Strict Booking Window Evaluation
-// All bookings open strictly at 09:00 AM
+// All bookings open strictly at 07:00 AM
 function isMealOpen(mealKey) {
   if (serverStatusCache && serverStatusCache.meals && serverStatusCache.meals[mealKey]) {
     return {
@@ -230,10 +230,10 @@ function isMealOpen(mealKey) {
 
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const openMinutes = 9 * 60; // 09:00 AM
+  const openMinutes = 7 * 60; // 07:00 AM
 
   if (currentMinutes < openMinutes) {
-    return { open: false, reason: 'Closed (Opens at 09:00 AM)' };
+    return { open: false, reason: 'Closed (Opens at 07:00 AM)' };
   }
 
   const cfg = MEAL_CONFIG[mealKey];
