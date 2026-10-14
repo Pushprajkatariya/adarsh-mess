@@ -860,6 +860,19 @@ select.mobile-text-input option {
   letter-spacing: 0.3px;
 }
 
+.student-time-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  letter-spacing: 0.2px;
+}
+
 .student-name-text {
   font-size: 1rem;
   font-weight: 700;

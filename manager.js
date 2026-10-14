@@ -21,6 +21,35 @@ function formatDisplayDate(isoDateStr) {
   return dateObj.toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function formatBookingTime(createdAtStr) {
+  if (!createdAtStr) return '';
+  const match = createdAtStr.match(/(\d{1,2}:\d{2})(?::\d{2})?\s*(AM|PM|am|pm)/i);
+  if (match) {
+    return `${match[1]} ${match[2].toUpperCase()}`;
+  }
+  try {
+    const d = new Date(createdAtStr);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+  } catch (e) {}
+  return createdAtStr;
+}
+
+let lastKnownDate = getTodayIso();
+
+function checkDayRollover() {
+  const currentToday = getTodayIso();
+  if (currentToday !== lastKnownDate) {
+    lastKnownDate = currentToday;
+    if (isViewingActiveShift && adminDateFilter) {
+      adminDateFilter.value = currentToday;
+      currentViewingDate = currentToday;
+    }
+    loadBookingsFromDb();
+  }
+}
+
 let currentBookings = [];
 let currentViewingDate = getTodayIso();
 let activeFilterTab = 'all';
@@ -87,6 +116,7 @@ function setupClock() {
     if (liveClockEl) {
       liveClockEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
+    checkDayRollover();
   };
   update();
   setInterval(update, 1000);
@@ -257,6 +287,10 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
     const thaliBadge = (entry.thali_type && entry.thali_type.toLowerCase().includes('jain'))
       ? `<span class="student-room-badge" style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); font-weight: 700; margin-left: 4px;">JAIN</span>`
       : `<span class="student-room-badge" style="background: rgba(59, 130, 246, 0.12); color: #93c5fd; margin-left: 4px;">Regular</span>`;
+    const bookingTime = formatBookingTime(entry.created_at);
+    const timeBadge = bookingTime
+      ? `<span class="student-time-badge" style="margin-left: 4px;">Booked: ${escapeHtml(bookingTime)}</span>`
+      : '';
 
     row.innerHTML = `
       <div class="mobile-student-left">
@@ -265,6 +299,7 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
           <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
             <span class="student-room-badge">${roomLabel}</span>
             ${thaliBadge}
+            ${timeBadge}
             ${dateLabel}
           </div>
           <span class="student-name-text">${escapeHtml(entry.student_name)}</span>

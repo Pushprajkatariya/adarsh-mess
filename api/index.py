@@ -100,6 +100,27 @@ def rest_clear_bookings(date_filter=None):
         print(f"REST clear error: {e}")
         return False
 
+_last_purged_date = None
+
+def rest_purge_previous_days(today_str):
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/bookings?meal_date=lt.{today_str}"
+        headers = dict(REST_HEADERS)
+        headers["Prefer"] = "return=minimal"
+        req = urllib.request.Request(url, headers=headers, method="DELETE")
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            return True
+    except Exception as e:
+        print(f"REST purge error: {e}")
+        return False
+
+def ensure_previous_days_purged(today_str):
+    global _last_purged_date
+    if _last_purged_date == today_str:
+        return
+    if rest_purge_previous_days(today_str):
+        _last_purged_date = today_str
+
 # ---------------------------------------------------------------------------
 # Status & Timing
 # ---------------------------------------------------------------------------
@@ -190,16 +211,17 @@ def dispatch_api(method, path, query_params, body):
     method = method.upper()
 
     if method == "GET":
+        now = get_ist_now()
+        today_str = now.strftime("%Y-%m-%d")
+        tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        ensure_previous_days_purged(today_str)
+
         if path.endswith("/status"):
             dev_id = query_params.get("device_id", [None])[0]
             return 200, get_current_status(dev_id)
 
         if path.endswith("/bookings"):
             date_filter = query_params.get("date", [None])[0]
-            now = get_ist_now()
-            today_str = now.strftime("%Y-%m-%d")
-            tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-
             rows = rest_get_bookings(date_filter)
 
             return 200, {
@@ -249,7 +271,10 @@ def dispatch_api(method, path, query_params, body):
                 return 400, {"error": "At least one meal option must be selected."}
 
             status = get_current_status(device_id)
-            now_str = get_ist_now().strftime("%Y-%m-%d %I:%M:%S %p")
+            now_dt = get_ist_now()
+            today_str = now_dt.strftime("%Y-%m-%d")
+            ensure_previous_days_purged(today_str)
+            now_str = now_dt.strftime("%Y-%m-%d %I:%M:%S %p")
 
             # Strict cut-off check
             invalid_meals = []
@@ -314,7 +339,8 @@ def dispatch_api(method, path, query_params, body):
                     "meal_type": key,
                     "meal_label": meta["label"],
                     "meal_date": assigned_date,
-                    "target_label": meta["target_label"]
+                    "target_label": meta["target_label"],
+                    "created_at": now_str
                 })
 
             return 201, {

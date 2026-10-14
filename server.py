@@ -317,16 +317,19 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
 
             with get_db() as conn:
                 cur = conn.cursor()
+                cur.execute(q("DELETE FROM bookings WHERE meal_date < ?"), (today_str,))
+                conn.commit()
+
                 if date_filter and date_filter != "active":
                     cur.execute(q(
-                        "SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date = ? ORDER BY id ASC"
+                        "SELECT id, student_name, room_number, thali_type, meal_type, meal_date, is_done, created_at FROM bookings WHERE meal_date = ? ORDER BY id ASC"
                     ), (date_filter,))
                     rows = fetchall(cur)
                     resp_date = date_filter
                 else:
                     # Active Shift: Tiffin for tomorrow, Lunch & Dinner for today
                     cur.execute(q("""
-                        SELECT id, student_name, room_number, meal_type, meal_date, is_done, created_at
+                        SELECT id, student_name, room_number, thali_type, meal_type, meal_date, is_done, created_at
                         FROM bookings
                         WHERE (meal_type = 'tiffin' AND meal_date = ?)
                            OR (meal_type IN ('lunch', 'dinner') AND meal_date = ?)
@@ -415,6 +418,7 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
         # Anti-duplication checks
         with get_db() as conn:
             cur = conn.cursor()
+            cur.execute(q("DELETE FROM bookings WHERE meal_date < ?"), (status["today"],))
             for meal in requested_meals:
                 meal_key = meal.lower()
                 meal_meta = status["meals"][meal_key]
@@ -465,7 +469,8 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
                     "meal_type": meal_key,
                     "meal_label": meal_meta["label"],
                     "meal_date": assigned_date,
-                    "target_label": meal_meta["target_label"]
+                    "target_label": meal_meta["target_label"],
+                    "created_at": now_str
                 })
 
         self.send_json_response(201, {

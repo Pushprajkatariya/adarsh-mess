@@ -442,10 +442,15 @@ function showSuccessState(studentName, roomNumber, thaliType, createdEntries) {
     </div>
   `).join('');
 
+  const bookingTimeRaw = (createdEntries[0] && createdEntries[0].created_at) ? createdEntries[0].created_at : '';
+  const match = bookingTimeRaw.match(/(\d{1,2}:\d{2})(?::\d{2})?\s*(AM|PM|am|pm)/i);
+  const formattedTime = match ? `${match[1]} ${match[2].toUpperCase()}` : new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
   submittedSummaryBox.innerHTML = `
     <div style="margin-bottom:0.35rem;"><strong>Student:</strong> ${escapeHtml(studentName)}</div>
     <div style="margin-bottom:0.35rem;"><strong>Room:</strong> <span style="color:#60a5fa; font-weight:800; font-size:1.05rem;">${escapeHtml(roomNumber)}</span></div>
     <div style="margin-bottom:0.35rem;"><strong>Thali Preference:</strong> <span style="color:#fbbf24; font-weight:700;">${escapeHtml(thaliType || 'Regular Thali')}</span></div>
+    <div style="margin-bottom:0.35rem;"><strong>Booked At:</strong> <span style="color:#cbd5e1; font-weight:600;">${escapeHtml(formattedTime)}</span></div>
     <div style="margin-top: 0.5rem;">
       ${entriesHtml}
     </div>
