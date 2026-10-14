@@ -28,7 +28,7 @@ IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 OPEN_HOUR, OPEN_MINUTE = 7, 0
 LUNCH_CLOSE_HOUR, LUNCH_CLOSE_MINUTE = 13, 30
 DINNER_CLOSE_HOUR, DINNER_CLOSE_MINUTE = 20, 30
-TIFFIN_CLOSE_HOUR, TIFFIN_CLOSE_MINUTE = 23, 0
+TIFFIN_CLOSE_HOUR, TIFFIN_CLOSE_MINUTE = 23, 59
 
 def get_ist_now():
     return datetime.datetime.now(IST)
@@ -154,8 +154,8 @@ def get_current_status(device_id=None):
                 "meal_date": tomorrow_str,
                 "target_label": "Next Day",
                 "label": "Morning Tiffin",
-                "status_text": get_reason(tiffin_open, "07:00 AM", "11:00 PM"),
-                "timing": "07:00 AM - 11:00 PM (Previous Day)"
+                "status_text": get_reason(tiffin_open, "07:00 AM", "11:59 PM"),
+                "timing": "07:00 AM - 11:59 PM (Previous Day)"
             },
             "lunch": {
                 "open": lunch_open,
@@ -233,6 +233,7 @@ def dispatch_api(method, path, query_params, body):
         if path.endswith("/bookings"):
             student_name = " ".join((body.get("student_name") or "").strip().split())
             room_number = " ".join((body.get("room_number") or "").strip().upper().split())
+            thali_type = (body.get("thali_type") or "Regular Thali").strip()
             device_id = (body.get("device_id") or "").strip()
             requested_meals = body.get("meals") or []
 
@@ -297,6 +298,7 @@ def dispatch_api(method, path, query_params, body):
                     "id": eid,
                     "student_name": student_name,
                     "room_number": room_number,
+                    "thali_type": thali_type,
                     "device_id": device_id,
                     "meal_type": key,
                     "meal_date": assigned_date,
@@ -308,6 +310,7 @@ def dispatch_api(method, path, query_params, body):
                     "id": eid,
                     "student_name": student_name,
                     "room_number": room_number,
+                    "thali_type": thali_type,
                     "meal_type": key,
                     "meal_label": meta["label"],
                     "meal_date": assigned_date,
@@ -318,6 +321,7 @@ def dispatch_api(method, path, query_params, body):
                 "success": True,
                 "student_name": student_name,
                 "room_number": room_number,
+                "thali_type": thali_type,
                 "created": created
             }
 

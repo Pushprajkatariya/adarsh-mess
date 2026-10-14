@@ -52,8 +52,8 @@ LUNCH_CLOSE_MINUTE = 30
 DINNER_CLOSE_HOUR = 20     # 8:30 PM
 DINNER_CLOSE_MINUTE = 30
 
-TIFFIN_CLOSE_HOUR = 23     # 11:00 PM
-TIFFIN_CLOSE_MINUTE = 0
+TIFFIN_CLOSE_HOUR = 23     # 11:59 PM
+TIFFIN_CLOSE_MINUTE = 59
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +160,8 @@ def init_db():
                 cur.execute("ALTER TABLE bookings ADD COLUMN room_number TEXT NOT NULL DEFAULT ''")
             if "device_id" not in columns:
                 cur.execute("ALTER TABLE bookings ADD COLUMN device_id TEXT NOT NULL DEFAULT ''")
+            if "thali_type" not in columns:
+                cur.execute("ALTER TABLE bookings ADD COLUMN thali_type TEXT NOT NULL DEFAULT 'Regular Thali'")
 
 
 # ---------------------------------------------------------------------------
@@ -258,8 +260,8 @@ def get_current_status(device_id=None):
                 "meal_date": tomorrow_str,
                 "target_label": "Next Day",
                 "label": "Morning Tiffin",
-                "status_text": get_reason(tiffin_open, "11:00 PM"),
-                "timing": "07:00 AM - 11:00 PM (Previous Day)"
+                "status_text": get_reason(tiffin_open, "11:59 PM"),
+                "timing": "07:00 AM - 11:59 PM (Previous Day)"
             },
             "lunch": {
                 "open": lunch_open,
@@ -373,6 +375,7 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
     def handle_create_booking(self, body):
         student_name = " ".join((body.get("student_name") or "").strip().split())
         room_number = " ".join((body.get("room_number") or "").strip().upper().split())
+        thali_type = (body.get("thali_type") or "Regular Thali").strip()
         device_id = (body.get("device_id") or "").strip()
         requested_meals = body.get("meals") or []
 
@@ -401,7 +404,7 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             meal_key = meal.lower()
             if meal_key not in status["meals"]:
                 invalid_meals.append(meal)
-            elif not status["meals"][meal_key]["open"]:
+            elif not status["meals"][key if 'key' in locals() else meal_key]["open"]:
                 meal_meta = status["meals"][meal_key]
                 invalid_meals.append(f"{meal_meta['label']} ({meal_meta['status_text']})")
 
@@ -451,13 +454,14 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
                 entry_id = f"bk_{uuid.uuid4().hex[:10]}"
 
                 cur.execute(q(
-                    "INSERT INTO bookings (id, student_name, room_number, device_id, meal_type, meal_date, is_done, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)"
-                ), (entry_id, student_name, room_number, device_id, meal_key, assigned_date, now_str))
+                    "INSERT INTO bookings (id, student_name, room_number, thali_type, device_id, meal_type, meal_date, is_done, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)"
+                ), (entry_id, student_name, room_number, thali_type, device_id, meal_key, assigned_date, now_str))
 
                 created_entries.append({
                     "id": entry_id,
                     "student_name": student_name,
                     "room_number": room_number,
+                    "thali_type": thali_type,
                     "meal_type": meal_key,
                     "meal_label": meal_meta["label"],
                     "meal_date": assigned_date,
@@ -468,6 +472,7 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
             "success": True,
             "student_name": student_name,
             "room_number": room_number,
+            "thali_type": thali_type,
             "created": created_entries
         })
 

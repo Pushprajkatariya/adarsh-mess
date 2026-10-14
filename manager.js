@@ -219,9 +219,13 @@ window.renderManagerDashboard = function() {
   if (tabBadgeLunch) tabBadgeLunch.textContent = lunchList.length;
   if (tabBadgeDinner) tabBadgeDinner.textContent = dinnerList.length;
 
-  if (tiffinTotalCount) tiffinTotalCount.textContent = `${tiffinList.length} booked`;
-  if (lunchTotalCount)  lunchTotalCount.textContent  = `${lunchList.length} booked`;
-  if (dinnerTotalCount) dinnerTotalCount.textContent = `${dinnerList.length} booked`;
+  const jainTiffin = tiffinList.filter(b => b.thali_type && b.thali_type.toLowerCase().includes('jain')).length;
+  const jainLunch  = lunchList.filter(b => b.thali_type && b.thali_type.toLowerCase().includes('jain')).length;
+  const jainDinner = dinnerList.filter(b => b.thali_type && b.thali_type.toLowerCase().includes('jain')).length;
+
+  if (tiffinTotalCount) tiffinTotalCount.textContent = jainTiffin > 0 ? `${tiffinList.length} booked (${jainTiffin} Jain)` : `${tiffinList.length} booked`;
+  if (lunchTotalCount)  lunchTotalCount.textContent  = jainLunch > 0 ? `${lunchList.length} booked (${jainLunch} Jain)` : `${lunchList.length} booked`;
+  if (dinnerTotalCount) dinnerTotalCount.textContent = jainDinner > 0 ? `${dinnerList.length} booked (${jainDinner} Jain)` : `${dinnerList.length} booked`;
 
   renderStudentMobileList(tiffinList, listTiffin, emptyTiffinMsg);
   renderStudentMobileList(lunchList,  listLunch,  emptyLunchMsg);
@@ -250,6 +254,9 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
     const roomLabel = entry.room_number ? `Room ${escapeHtml(entry.room_number)}` : 'Room -';
 
     const dateLabel = entry.meal_date ? `<span class="student-room-badge" style="background: rgba(255,255,255,0.06); color: #8fa0c0; margin-left: 4px;">${escapeHtml(entry.meal_date)}</span>` : '';
+    const thaliBadge = (entry.thali_type && entry.thali_type.toLowerCase().includes('jain'))
+      ? `<span class="student-room-badge" style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); font-weight: 700; margin-left: 4px;">JAIN</span>`
+      : `<span class="student-room-badge" style="background: rgba(59, 130, 246, 0.12); color: #93c5fd; margin-left: 4px;">Regular</span>`;
 
     row.innerHTML = `
       <div class="mobile-student-left">
@@ -257,6 +264,7 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
         <div class="student-details-wrap">
           <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
             <span class="student-room-badge">${roomLabel}</span>
+            ${thaliBadge}
             ${dateLabel}
           </div>
           <span class="student-name-text">${escapeHtml(entry.student_name)}</span>

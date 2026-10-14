@@ -220,6 +220,17 @@ body.mobile-body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
 }
 
+select.mobile-text-input {
+  cursor: pointer;
+  background-color: #141416;
+  color: #ffffff;
+}
+
+select.mobile-text-input option {
+  background-color: #141416;
+  color: #ffffff;
+}
+
 /* ========================================================
    Meal Selection Cards (Clean, Bold, No Emojis, No Filler)
    ======================================================== */

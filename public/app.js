@@ -30,8 +30,8 @@ const MEAL_CONFIG = {
     badge: document.getElementById('badgeTiffinStatus'),
     dateTag: document.getElementById('tagDateTiffin'),
     closeHour: 23,
-    closeMinute: 0,
-    closeLabel: '11:00 PM'
+    closeMinute: 59,
+    closeLabel: '11:59 PM'
   },
   lunch: {
     name: 'Lunch Late Thali',
@@ -340,6 +340,8 @@ function setupFormListener() {
 
     const name = studentNameInput.value.trim();
     const room = roomNumberInput ? roomNumberInput.value.trim().toUpperCase() : '';
+    const thaliTypeEl = document.getElementById('thaliType');
+    const thaliType = thaliTypeEl ? thaliTypeEl.value : 'Regular Thali';
 
     if (!name) {
       studentNameInput.focus();
@@ -396,6 +398,7 @@ function setupFormListener() {
         body: JSON.stringify({
           student_name: name,
           room_number: room,
+          thali_type: thaliType,
           device_id: devId,
           meals: selectedMeals
         })
@@ -412,7 +415,7 @@ function setupFormListener() {
         saveDeviceBooking(entry.meal_type, name, room, entry.meal_date);
       }
 
-      showSuccessState(name, room, result.created);
+      showSuccessState(name, room, thaliType, result.created);
     } catch (err) {
       console.error('Booking submission error:', err);
       if (selectionError) {
@@ -428,7 +431,7 @@ function setupFormListener() {
   });
 }
 
-function showSuccessState(studentName, roomNumber, createdEntries) {
+function showSuccessState(studentName, roomNumber, thaliType, createdEntries) {
   messOrderForm.classList.add('hidden');
   successCard.classList.remove('hidden');
 
@@ -442,6 +445,7 @@ function showSuccessState(studentName, roomNumber, createdEntries) {
   submittedSummaryBox.innerHTML = `
     <div style="margin-bottom:0.35rem;"><strong>Student:</strong> ${escapeHtml(studentName)}</div>
     <div style="margin-bottom:0.35rem;"><strong>Room:</strong> <span style="color:#60a5fa; font-weight:800; font-size:1.05rem;">${escapeHtml(roomNumber)}</span></div>
+    <div style="margin-bottom:0.35rem;"><strong>Thali Preference:</strong> <span style="color:#fbbf24; font-weight:700;">${escapeHtml(thaliType || 'Regular Thali')}</span></div>
     <div style="margin-top: 0.5rem;">
       ${entriesHtml}
     </div>
@@ -455,6 +459,8 @@ function showSuccessState(studentName, roomNumber, createdEntries) {
 
 window.resetFormForNewEntry = function() {
   messOrderForm.reset();
+  const thaliTypeEl = document.getElementById('thaliType');
+  if (thaliTypeEl) thaliTypeEl.value = 'Regular Thali';
   for (const cfg of Object.values(MEAL_CONFIG)) {
     if (cfg.box) cfg.box.classList.remove('selected');
     if (cfg.check) cfg.check.checked = false;
