@@ -199,8 +199,18 @@ window.loadBookingsFromDb = async function(isSilent = false) {
       if (lblActiveViewDate) {
         lblActiveViewDate.textContent = 'Active Shift (Live)';
       }
-      if (lblTiffinTargetDate && data.tomorrow) {
-        lblTiffinTargetDate.textContent = `Serving: Tomorrow (${formatDisplayDate(data.tomorrow)})`;
+      const tiffinsToday = currentBookings.filter(b => b.meal_type === 'tiffin' && b.meal_date === data.today).length;
+      const tiffinsTomorrow = currentBookings.filter(b => b.meal_type === 'tiffin' && b.meal_date === data.tomorrow).length;
+      if (lblTiffinTargetDate) {
+        if (tiffinsToday > 0 && tiffinsTomorrow > 0) {
+          lblTiffinTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)}) & Tomorrow (${formatDisplayDate(data.tomorrow)})`;
+        } else if (tiffinsToday > 0) {
+          lblTiffinTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
+        } else if (tiffinsTomorrow > 0) {
+          lblTiffinTargetDate.textContent = `Serving: Tomorrow (${formatDisplayDate(data.tomorrow)})`;
+        } else {
+          lblTiffinTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
+        }
       }
       if (lblLunchTargetDate && data.today) {
         lblLunchTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
