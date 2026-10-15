@@ -318,12 +318,13 @@ def dispatch_api(method, path, query_params, body):
                 key = meal.lower()
                 meta = status["meals"][key]
                 assigned_date = meta["meal_date"]
+                assigned_thali = thali_type if key in ("lunch", "dinner") else ""
                 eid = f"bk_{uuid.uuid4().hex[:10]}"
                 record = {
                     "id": eid,
                     "student_name": student_name,
                     "room_number": room_number,
-                    "thali_type": thali_type,
+                    "thali_type": assigned_thali,
                     "device_id": device_id,
                     "meal_type": key,
                     "meal_date": assigned_date,
@@ -335,7 +336,7 @@ def dispatch_api(method, path, query_params, body):
                     "id": eid,
                     "student_name": student_name,
                     "room_number": room_number,
-                    "thali_type": thali_type,
+                    "thali_type": assigned_thali,
                     "meal_type": key,
                     "meal_label": meta["label"],
                     "meal_date": assigned_date,

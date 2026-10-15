@@ -304,6 +304,14 @@ function applyTimeLockEnforcement() {
   }
 }
 
+function updateThaliVisibility() {
+  const thaliGroup = document.getElementById('thaliPreferenceGroup');
+  if (!thaliGroup) return;
+  const lunchChecked = Boolean(MEAL_CONFIG.lunch.check && MEAL_CONFIG.lunch.check.checked);
+  const dinnerChecked = Boolean(MEAL_CONFIG.dinner.check && MEAL_CONFIG.dinner.check.checked);
+  thaliGroup.style.display = (lunchChecked || dinnerChecked) ? 'block' : 'none';
+}
+
 // Card Tap Toggle
 window.toggleMealCard = function(type) {
   const cfg = MEAL_CONFIG[type];
@@ -329,19 +337,24 @@ window.toggleMealCard = function(type) {
   } else {
     cfg.box.classList.remove('selected');
   }
+  updateThaliVisibility();
 };
 
 // Form Submission to SQLite Database Backend
 function setupFormListener() {
   if (!messOrderForm) return;
 
+  for (const cfg of Object.values(MEAL_CONFIG)) {
+    if (cfg.check) {
+      cfg.check.addEventListener('change', updateThaliVisibility);
+    }
+  }
+
   messOrderForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const name = studentNameInput.value.trim();
     const room = roomNumberInput ? roomNumberInput.value.trim().toUpperCase() : '';
-    const thaliTypeEl = document.getElementById('thaliType');
-    const thaliType = thaliTypeEl ? thaliTypeEl.value : 'Regular Thali';
 
     if (!name) {
       studentNameInput.focus();
@@ -372,6 +385,10 @@ function setupFormListener() {
       }
       return;
     }
+
+    const hasThaliMeal = selectedMeals.includes('lunch') || selectedMeals.includes('dinner');
+    const thaliTypeEl = document.getElementById('thaliType');
+    const thaliType = hasThaliMeal ? (thaliTypeEl ? thaliTypeEl.value : 'Regular Thali') : '';
 
     // Device lock check
     for (const mealKey of selectedMeals) {
@@ -415,7 +432,7 @@ function setupFormListener() {
         saveDeviceBooking(entry.meal_type, name, room, entry.meal_date);
       }
 
-      showSuccessState(name, room, thaliType, result.created);
+      showSuccessState(name, room, thaliType, result.created, hasThaliMeal);
     } catch (err) {
       console.error('Booking submission error:', err);
       if (selectionError) {
@@ -431,7 +448,7 @@ function setupFormListener() {
   });
 }
 
-function showSuccessState(studentName, roomNumber, thaliType, createdEntries) {
+function showSuccessState(studentName, roomNumber, thaliType, createdEntries, hasThaliMeal) {
   messOrderForm.classList.add('hidden');
   successCard.classList.remove('hidden');
 
@@ -446,10 +463,14 @@ function showSuccessState(studentName, roomNumber, thaliType, createdEntries) {
   const match = bookingTimeRaw.match(/(\d{1,2}:\d{2})(?::\d{2})?\s*(AM|PM|am|pm)/i);
   const formattedTime = match ? `${match[1]} ${match[2].toUpperCase()}` : new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
+  const thaliHtml = (hasThaliMeal && thaliType)
+    ? `<div style="margin-bottom:0.35rem;"><strong>Thali Preference:</strong> <span style="color:#fbbf24; font-weight:700;">${escapeHtml(thaliType)}</span></div>`
+    : '';
+
   submittedSummaryBox.innerHTML = `
     <div style="margin-bottom:0.35rem;"><strong>Student:</strong> ${escapeHtml(studentName)}</div>
     <div style="margin-bottom:0.35rem;"><strong>Room:</strong> <span style="color:#60a5fa; font-weight:800; font-size:1.05rem;">${escapeHtml(roomNumber)}</span></div>
-    <div style="margin-bottom:0.35rem;"><strong>Thali Preference:</strong> <span style="color:#fbbf24; font-weight:700;">${escapeHtml(thaliType || 'Regular Thali')}</span></div>
+    ${thaliHtml}
     <div style="margin-bottom:0.35rem;"><strong>Booked At:</strong> <span style="color:#cbd5e1; font-weight:600;">${escapeHtml(formattedTime)}</span></div>
     <div style="margin-top: 0.5rem;">
       ${entriesHtml}
@@ -466,6 +487,7 @@ window.resetFormForNewEntry = function() {
   messOrderForm.reset();
   const thaliTypeEl = document.getElementById('thaliType');
   if (thaliTypeEl) thaliTypeEl.value = 'Regular Thali';
+  updateThaliVisibility();
   for (const cfg of Object.values(MEAL_CONFIG)) {
     if (cfg.box) cfg.box.classList.remove('selected');
     if (cfg.check) cfg.check.checked = false;

@@ -457,15 +457,17 @@ class MessRequestHandler(SimpleHTTPRequestHandler):
                 assigned_date = meal_meta["meal_date"]
                 entry_id = f"bk_{uuid.uuid4().hex[:10]}"
 
+                assigned_thali = thali_type if meal_key in ("lunch", "dinner") else ""
+
                 cur.execute(q(
                     "INSERT INTO bookings (id, student_name, room_number, thali_type, device_id, meal_type, meal_date, is_done, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)"
-                ), (entry_id, student_name, room_number, thali_type, device_id, meal_key, assigned_date, now_str))
+                ), (entry_id, student_name, room_number, assigned_thali, device_id, meal_key, assigned_date, now_str))
 
                 created_entries.append({
                     "id": entry_id,
                     "student_name": student_name,
                     "room_number": room_number,
-                    "thali_type": thali_type,
+                    "thali_type": assigned_thali,
                     "meal_type": meal_key,
                     "meal_label": meal_meta["label"],
                     "meal_date": assigned_date,

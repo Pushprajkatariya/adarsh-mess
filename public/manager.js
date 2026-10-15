@@ -41,8 +41,9 @@ let lastKnownDate = getTodayIso();
 function checkDayRollover() {
   const currentToday = getTodayIso();
   if (currentToday !== lastKnownDate) {
+    const wasViewingToday = (adminDateFilter && adminDateFilter.value === lastKnownDate);
     lastKnownDate = currentToday;
-    if (isViewingActiveShift && adminDateFilter) {
+    if (adminDateFilter && wasViewingToday) {
       adminDateFilter.value = currentToday;
       currentViewingDate = currentToday;
     }
@@ -59,6 +60,9 @@ const liveClockEl = document.getElementById('liveClock');
 const adminDateFilter = document.getElementById('adminDateFilter');
 const lblActiveViewDate = document.getElementById('lblActiveViewDate');
 const managerSearchInput = document.getElementById('managerSearchInput');
+const lblTiffinTargetDate = document.getElementById('lblTiffinTargetDate');
+const lblLunchTargetDate  = document.getElementById('lblLunchTargetDate');
+const lblDinnerTargetDate = document.getElementById('lblDinnerTargetDate');
 
 // Tab Badges
 const tabBadgeAll = document.getElementById('tabBadgeAll');
@@ -122,16 +126,9 @@ function setupClock() {
   setInterval(update, 1000);
 }
 
-let isViewingActiveShift = true;
-
-const lblTiffinTargetDate = document.getElementById('lblTiffinTargetDate');
-const lblLunchTargetDate  = document.getElementById('lblLunchTargetDate');
-const lblDinnerTargetDate = document.getElementById('lblDinnerTargetDate');
-
 // Mobile Date Stepper
 window.stepDate = function(offsetDays) {
   if (!adminDateFilter) return;
-  isViewingActiveShift = false;
   const currentVal = adminDateFilter.value || getTodayIso();
   const [y, m, d] = currentVal.split('-').map(Number);
   const dateObj = new Date(y, m - 1, d);
@@ -146,7 +143,6 @@ window.stepDate = function(offsetDays) {
 
 window.resetToCurrentDate = function() {
   if (!adminDateFilter) return;
-  isViewingActiveShift = true;
   adminDateFilter.value = getTodayIso();
   loadBookingsFromDb();
 };
@@ -180,14 +176,9 @@ function applyTabVisibility() {
 // Load from SQLite Backend
 // ========================================================
 window.loadBookingsFromDb = async function(isSilent = false) {
-  let url = `${API_BASE}/api/bookings`;
-  if (isViewingActiveShift) {
-    url += '?view=active';
-  } else {
-    const selectedDate = adminDateFilter ? (adminDateFilter.value || getTodayIso()) : getTodayIso();
-    currentViewingDate = selectedDate;
-    url += `?date=${encodeURIComponent(selectedDate)}`;
-  }
+  const selectedDate = adminDateFilter ? (adminDateFilter.value || getTodayIso()) : getTodayIso();
+  currentViewingDate = selectedDate;
+  const url = `${API_BASE}/api/bookings?date=${encodeURIComponent(selectedDate)}`;
 
   try {
     const res = await fetch(url);
@@ -195,39 +186,13 @@ window.loadBookingsFromDb = async function(isSilent = false) {
     const data = await res.json();
     currentBookings = data.bookings || [];
 
-    if (isViewingActiveShift) {
-      if (lblActiveViewDate) {
-        lblActiveViewDate.textContent = 'Active Shift (Live)';
-      }
-      const tiffinsToday = currentBookings.filter(b => b.meal_type === 'tiffin' && b.meal_date === data.today).length;
-      const tiffinsTomorrow = currentBookings.filter(b => b.meal_type === 'tiffin' && b.meal_date === data.tomorrow).length;
-      if (lblTiffinTargetDate) {
-        if (tiffinsToday > 0 && tiffinsTomorrow > 0) {
-          lblTiffinTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)}) & Tomorrow (${formatDisplayDate(data.tomorrow)})`;
-        } else if (tiffinsToday > 0) {
-          lblTiffinTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
-        } else if (tiffinsTomorrow > 0) {
-          lblTiffinTargetDate.textContent = `Serving: Tomorrow (${formatDisplayDate(data.tomorrow)})`;
-        } else {
-          lblTiffinTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
-        }
-      }
-      if (lblLunchTargetDate && data.today) {
-        lblLunchTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
-      }
-      if (lblDinnerTargetDate && data.today) {
-        lblDinnerTargetDate.textContent = `Serving: Today (${formatDisplayDate(data.today)})`;
-      }
-    } else {
-      const selectedDate = adminDateFilter ? adminDateFilter.value : getTodayIso();
-      if (lblActiveViewDate) {
-        lblActiveViewDate.textContent = formatDisplayDate(selectedDate);
-      }
-      const dateText = `Serving Date: ${formatDisplayDate(selectedDate)}`;
-      if (lblTiffinTargetDate) lblTiffinTargetDate.textContent = dateText;
-      if (lblLunchTargetDate) lblLunchTargetDate.textContent = dateText;
-      if (lblDinnerTargetDate) lblDinnerTargetDate.textContent = dateText;
+    if (lblActiveViewDate) {
+      lblActiveViewDate.textContent = formatDisplayDate(selectedDate);
     }
+    const dateText = `Serving Date: ${formatDisplayDate(selectedDate)}`;
+    if (lblTiffinTargetDate) lblTiffinTargetDate.textContent = dateText;
+    if (lblLunchTargetDate) lblLunchTargetDate.textContent = dateText;
+    if (lblDinnerTargetDate) lblDinnerTargetDate.textContent = dateText;
 
     renderManagerDashboard();
   } catch (err) {
@@ -240,9 +205,13 @@ window.loadBookingsFromDb = async function(isSilent = false) {
 
 // Render Mobile Student Lists
 window.renderManagerDashboard = function() {
+  const selectedDate = adminDateFilter ? (adminDateFilter.value || getTodayIso()) : getTodayIso();
   const searchTerm = (managerSearchInput ? managerSearchInput.value : '').toLowerCase().trim();
 
-  const filtered = currentBookings.filter(b => {
+  // Strictly filter by the selected serving date
+  const dateFiltered = currentBookings.filter(b => b.meal_date === selectedDate);
+
+  const filtered = dateFiltered.filter(b => {
     if (!searchTerm) return true;
     const nameMatch = b.student_name && b.student_name.toLowerCase().includes(searchTerm);
     const roomMatch = b.room_number && b.room_number.toLowerCase().includes(searchTerm);
@@ -259,11 +228,11 @@ window.renderManagerDashboard = function() {
   if (tabBadgeLunch) tabBadgeLunch.textContent = lunchList.length;
   if (tabBadgeDinner) tabBadgeDinner.textContent = dinnerList.length;
 
-  const jainTiffin = tiffinList.filter(b => b.thali_type && b.thali_type.toLowerCase().includes('jain')).length;
   const jainLunch  = lunchList.filter(b => b.thali_type && b.thali_type.toLowerCase().includes('jain')).length;
   const jainDinner = dinnerList.filter(b => b.thali_type && b.thali_type.toLowerCase().includes('jain')).length;
 
-  if (tiffinTotalCount) tiffinTotalCount.textContent = jainTiffin > 0 ? `${tiffinList.length} booked (${jainTiffin} Jain)` : `${tiffinList.length} booked`;
+  // Never show Jain/Regular breakdown for Tiffin! Only total count.
+  if (tiffinTotalCount) tiffinTotalCount.textContent = `${tiffinList.length} booked`;
   if (lunchTotalCount)  lunchTotalCount.textContent  = jainLunch > 0 ? `${lunchList.length} booked (${jainLunch} Jain)` : `${lunchList.length} booked`;
   if (dinnerTotalCount) dinnerTotalCount.textContent = jainDinner > 0 ? `${dinnerList.length} booked (${jainDinner} Jain)` : `${dinnerList.length} booked`;
 
@@ -294,9 +263,16 @@ function renderStudentMobileList(list, listEl, emptyMsgEl) {
     const roomLabel = entry.room_number ? `Room ${escapeHtml(entry.room_number)}` : 'Room -';
 
     const dateLabel = entry.meal_date ? `<span class="student-room-badge" style="background: rgba(255,255,255,0.06); color: #8fa0c0; margin-left: 4px;">${escapeHtml(entry.meal_date)}</span>` : '';
-    const thaliBadge = (entry.thali_type && entry.thali_type.toLowerCase().includes('jain'))
-      ? `<span class="student-room-badge" style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); font-weight: 700; margin-left: 4px;">JAIN</span>`
-      : `<span class="student-room-badge" style="background: rgba(59, 130, 246, 0.12); color: #93c5fd; margin-left: 4px;">Regular</span>`;
+    
+    // Do NOT show regular or jain option for tiffin
+    const isTiffin = entry.meal_type === 'tiffin';
+    let thaliBadge = '';
+    if (!isTiffin && entry.thali_type) {
+      thaliBadge = entry.thali_type.toLowerCase().includes('jain')
+        ? `<span class="student-room-badge" style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); font-weight: 700; margin-left: 4px;">JAIN</span>`
+        : `<span class="student-room-badge" style="background: rgba(59, 130, 246, 0.12); color: #93c5fd; margin-left: 4px;">Regular</span>`;
+    }
+
     const bookingTime = formatBookingTime(entry.created_at);
     const timeBadge = bookingTime
       ? `<span class="student-time-badge" style="margin-left: 4px;">Booked: ${escapeHtml(bookingTime)}</span>`
@@ -381,25 +357,23 @@ window.toggleDoneStatus = async function(entryId, targetState) {
 
 // Clear Database Records
 window.clearDateBookings = async function() {
-  const confirmMsg = isViewingActiveShift
-    ? 'Are you sure you want to clear all active bookings (Tiffins for tomorrow, Lunch & Dinner for today)? Students will be unlocked to book again.'
-    : `Are you sure you want to clear all records for ${formatDisplayDate(adminDateFilter.value)}? Students will be unlocked to book again.`;
+  const selectedDate = adminDateFilter ? (adminDateFilter.value || getTodayIso()) : getTodayIso();
+  const confirmMsg = `Are you sure you want to clear all records for ${formatDisplayDate(selectedDate)}? Students will be unlocked to book again.`;
 
   if (!confirm(confirmMsg)) {
     return;
   }
 
   try {
-    const payload = isViewingActiveShift ? {} : { date: adminDateFilter.value };
     const res = await fetch(`${API_BASE}/api/bookings/clear`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ date: selectedDate })
     });
     if (!res.ok) throw new Error('Clear failed');
-    currentBookings = [];
+    currentBookings = currentBookings.filter(b => b.meal_date !== selectedDate);
     renderManagerDashboard();
-    showToast('Records cleared. Students are now unlocked to book again.');
+    showToast(`Records for ${formatDisplayDate(selectedDate)} cleared. Students are now unlocked to book again.`);
   } catch (err) {
     console.error('Failed to clear database records:', err);
     showToast('Error clearing records.');

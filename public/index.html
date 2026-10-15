@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Adarsh Dining Hall - Meal Reservation</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e3a8a%22/><text x=%2250%22 y=%2265%22 font-family=%22sans-serif%22 font-size=%2245%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>A</text></svg>">
-  <link rel="stylesheet" href="styles.css?v=2.5">
+  <link rel="stylesheet" href="styles.css?v=3.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -67,8 +67,8 @@
             required
             autocomplete="name"
           >
-          <div style="margin-top: 0.85rem;">
-            <label class="field-label" for="thaliType">Thali Preference</label>
+          <div id="thaliPreferenceGroup" style="margin-top: 0.85rem; display: none;">
+            <label class="field-label" for="thaliType">Thali Preference (Lunch / Dinner Late Thali)</label>
             <select id="thaliType" class="mobile-text-input">
               <option value="Regular Thali" selected>Regular Thali</option>
               <option value="JAIN Thali">JAIN Thali</option>
@@ -180,6 +180,6 @@
 
   </div>
 
-  <script src="app.js?v=2.5"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>
